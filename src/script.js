@@ -1478,9 +1478,14 @@
 
   function renderLatencyChart(pingRecords, pingTasks, lossByTask) {
     disposeChart('ping');
+    // 移植差异：没有任何可画的线路时（一条都没配，或配了但整个窗口一个数据点都没有），
+    // 上游会留下一个空白图表框——详情页底下一大片空白。这里整块收起，有数据时自动显示。
+    // 判定放在算完 stats 之后：「配了线路但还没测到数据」同样没有内容可画。
+    const latencySection = document.querySelector('.modal-latency-section');
     if (typeof echarts === 'undefined') return;
 
     const stats = computeTaskStats(pingRecords, pingTasks, lossByTask);
+    if (latencySection) latencySection.style.display = stats.length ? '' : 'none';
     const colorByTaskId = new Map(stats.map((task, index) => [
       String(task.id),
       PING_COLORS[index % PING_COLORS.length]
