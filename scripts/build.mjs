@@ -3,7 +3,7 @@
 // 第三方资源（ECharts、字体）搬到 dist/，所以构建产物可逐文件对应回源码。
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 
-const SRC_FILES = ['index.html', 'styles.css', 'script.js', 'monitor.js'];
+const SRC_FILES = ['index.html', 'styles.css', 'adapt.css', 'script.js', 'monitor.js'];
 const SRC_DIRS = ['vendor'];
 const VENDOR_FILES = ['echarts.min.js'];
 
@@ -36,7 +36,7 @@ cpSync('vendor/fonts', 'dist/vendor/fonts', { recursive: true });
 // 产物自检：引用到的本地资源必须都在包里，否则用户在浏览器里只会看到一个空白页
 const html = readdirSync('dist');
 if (!html.includes('index.html')) throw new Error('dist/index.html 没有生成');
-for (const asset of ['vendor/echarts.min.js', 'vendor/fonts.css', 'monitor.js', 'script.js', 'styles.css']) {
+for (const asset of ['vendor/echarts.min.js', 'vendor/fonts.css', 'adapt.css', 'monitor.js', 'script.js', 'styles.css']) {
   if (!existsSync(`dist/${asset}`)) throw new Error(`dist/${asset} 没有生成`);
 }
 const fonts = readdirSync('dist/vendor/fonts').filter((f) => f.endsWith('.woff2'));

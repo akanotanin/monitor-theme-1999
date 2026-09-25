@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto';
 
 // 默认值必须与 src/monitor.js 的 DEFAULTS 同步，否则「面板显示已开启、页面还是旧样子」
 execFileSync(process.execPath, ['scripts/check-defaults.mjs'], { stdio: 'inherit' });
+// 适配层护栏：上游 styles.css 一升级，adapt.css 的补救可能静默失配
+execFileSync(process.execPath, ['scripts/check-adapt.mjs'], { stdio: 'inherit' });
 
 const meta = JSON.parse(readFileSync('theme.json', 'utf8'));
 if (!/^[A-Za-z0-9_-]+$/.test(meta.short || '')) throw new Error(`theme.json 的 short 不合法: ${meta.short}`);
@@ -19,7 +21,7 @@ function hashFile(path) {
 // 别把旧产物打进包里：逐个比对 dist/ 与源文件的哈希。
 // （不用 mtime：Node 的 cpSync 会把源文件的修改时间一起带过去，改完源码时间戳仍相同。）
 const distPairs = [
-  ...['index.html', 'styles.css', 'script.js', 'monitor.js', 'vendor/fonts.css'].map((file) => [`src/${file}`, file]),
+  ...['index.html', 'styles.css', 'adapt.css', 'script.js', 'monitor.js', 'vendor/fonts.css'].map((file) => [`src/${file}`, file]),
   ...['echarts.min.js', ...readdirSync('vendor/fonts').map((font) => `fonts/${font}`)].map((file) => [`vendor/${file}`, `vendor/${file}`])
 ];
 const stale = distPairs.filter(([source, target]) => {

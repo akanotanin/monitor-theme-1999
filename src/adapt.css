@@ -1,0 +1,61 @@
+/* ==========================================================================
+   移植适配样式
+   上游 styles.css 保持逐字节不变，所有对上游样式的补救都集中在本文件。
+   加载顺序必须是 vendor/fonts.css → styles.css → adapt.css（本文件必须最后加载，
+   否则同优先级的选择器会被上游覆盖掉）。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   中文名字的显示效果
+   上游的展示字体 Archivo Black 只有拉丁字形：节点名、站点名只要是中文，浏览器就会
+   掉到系统默认无衬线的常规字重上——卡片上其余元素都是粗边框 + 超粗标签，只有中文
+   标题细一截，整张卡片看着不协调。
+   这里不动上游的字体声明，只补一个「中文专用的本机粗体」字面：
+   - @font-face + unicode-range 只吃中日韩文字与全角标点，拉丁文仍由 Archivo Black 负责，
+     所以「测试节点 · Tokyo」这种混排也不会变成两种字体的拼贴；
+   - src 全部用 local()，只挑本机已有的字体（Windows / macOS / Linux 各取常用名），
+     不下载 CJK 字体——思源黑体这类即使用子集也有好几 MB，中文站又必须能用；
+   - size-adjust 把中文稍微收一点，和 Archivo Black 的字面大小对齐。
+   本机没有命中任何一款时，会回落到上游原本的系统默认字体，即与未改前一致，不会更差。
+   -------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Monitor Display CJK';
+  src:
+    local('Microsoft YaHei UI Bold'), local('Microsoft YaHei Bold'),
+    local('PingFang SC Semibold'), local('PingFang SC Bold'),
+    local('Hiragino Sans GB W6'), local('Hiragino Sans GB'),
+    local('Source Han Sans SC Bold'), local('Source Han Sans CN Bold'),
+    local('Noto Sans CJK SC Bold'), local('Noto Sans SC Bold'),
+    local('WenQuanYi Micro Hei Bold');
+  font-weight: 400 900;
+  font-display: swap;
+  size-adjust: 96%;
+  unicode-range: U+2E80-2EFF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF;
+}
+
+/* 与上游 styles.css 里所有用 Archivo Black 的选择器一一对应。
+   scripts/check-adapt.mjs 会核对这份清单：上游升级后新增了用法而这里没跟上，
+   npm run check 会直接报错，而不是让中文又悄悄变细。 */
+h1, h2, h3, h4, h5, h6,
+.stat-value,
+.node-name,
+.row-node-name,
+.row-arrow,
+.footer-signature-author,
+.modal-content h2,
+.modal-content h3,
+.modal-node-status-tag {
+  font-family: 'Archivo Black', 'Monitor Display CJK', sans-serif;
+}
+
+/* --------------------------------------------------------------------------
+   页脚：左侧原有的那行 Powered by 已并入右下角徽章（同一句话不必出现两遍），
+   徽章本身保持不变，用 margin-left: auto 继续钉在右下角。
+   窄屏下页脚本来就是居中排列（上游样式），这个 auto 会把徽章顶到右边不对称，
+   所以只在宽屏生效。
+   -------------------------------------------------------------------------- */
+@media (min-width: 681px) {
+  .footer-signature {
+    margin-left: auto;
+  }
+}

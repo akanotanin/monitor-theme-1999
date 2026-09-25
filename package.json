@@ -12,7 +12,7 @@
   "scripts": {
     "vendor": "node scripts/vendor-assets.mjs",
     "build": "node scripts/build.mjs",
-    "check": "node scripts/check-defaults.mjs",
+    "check": "node scripts/check-defaults.mjs && node scripts/check-adapt.mjs",
     "package": "node scripts/build.mjs && node scripts/package.mjs",
     "preview": "node scripts/serve.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('release',{recursive:true,force:true})\""

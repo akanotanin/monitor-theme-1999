@@ -45,7 +45,8 @@
 | Connections / Processes 两张历史曲线卡 | Hub 只保存 CPU、内存、磁盘、上下行速率与 Ping 的历史，这两张卡移除；连接数的实时值仍在详情的 NETWORK 区块显示，进程数不再显示 |
 | 30 天历史窗口按钮 | Hub 对匿名访客的窗口上限是 168 小时（超限会被**静默夹到上限**），所以该按钮只对已登录的管理员显示 |
 | 流量上限模式 `min` | 极简探针只有 `sum` / `up` / `down` / `max` 四种模式 |
-| 页面文案里的「Komari」 | 改为 Monitor；页脚 `Powered by` 指向极简探针上游，署名仍保留原作者 |
+| 页面文案里的「Komari」 | 改为 Monitor；右下角徽章改成 `Powered by Monitor` 并指向极简探针上游（原为 `BUILD//1999 · THEME BY RICEBUCKET` 指向本主题上游） |
+| 中文节点名、站点名的字重 | 上游展示字体 Archivo Black 没有中文字形，中文会掉到系统常规字重、比卡片其余元素细一截；这里补一个本机中文粗体字面（见 `src/adapt.css`），拉丁文仍用 Archivo Black |
 
 其余适配上的取舍：
 
@@ -56,6 +57,9 @@
 - **没有可画的线路时**详情页的 LATENCY 区块整块收起：上游会留下一个空白图框（有边框、里面什么都没有），既没线路、也还没测到数据时都是如此。
 - **主题设置存在 Hub**：配置读写 `GET/PUT /api/themes/1999/config`，在后台「主题 → 主题设置」里修改，换设备、重装主题都不会丢。页面里不再自带设置面板。
 - **实时数据用轮询**：沿用原主题的设计，按「数据刷新间隔」（默认 3 秒）拉 `GET /api/nodes`，没有改用 Hub 的 `/api/ws` 推送。
+- **中文名字的字面**：`@font-face` + `unicode-range` 只覆盖中日韩文字与全角标点，字体源全部用 `local()` 挑本机已有的粗体（Windows 的微软雅黑 Bold、macOS 的苹方 Semibold、Linux 的思源黑体 Bold…），**不下载 CJK 字体**——思源黑体即使用子集也有好几 MB，而中文站又必须能用；一个字面都没命中时回落到上游原本的系统字体，即与未改前一致。`size-adjust: 96%` 把中文的字面大小和 Archivo Black 对齐。
+- **适配样式单独成文件**：上游 `styles.css` 保持逐字节不变，所有补救写在 `src/adapt.css`（必须排在 `styles.css` 之后加载）。`npm run check` 会核对上游每一个用到 Archivo Black 的选择器是否都被 adapt.css 覆盖、以及加载顺序，避免上游升级后中文又悄悄变细。
+- **页脚署名**：上游左侧那行 `Powered by Komari Monitor` 与右下角徽章是同一句署名，徽章改口后会重复，故只保留徽章（用 `margin-left: auto` 继续钉在右下角）；原作者署名保留在仓库 README 与 LICENSE 中。
 
 ## 数据映射
 
@@ -85,7 +89,7 @@
 
 ```bash
 npm run build      # src/ + vendor/ → dist/
-npm run check      # 校验 theme.json 的默认值与 src/monitor.js 的兜底默认值一致
+npm run check      # 校验 theme.json 默认值 ↔ 适配层兜底值，以及适配样式是否覆盖上游字体用法
 npm run package    # 构建 + 打 release/theme.tar.gz（含 sha256）
 npm run vendor     # 重新抓取 ECharts 与字体到 vendor/（带 sha256 校验）
 npm run preview    # 本地预览 dist/，可加 MONITOR_HUB=https://<你的探针> 反代 /api
@@ -104,13 +108,14 @@ MONITOR_HUB=https://your-monitor.example.com npm run preview   # 打开 http://1
 <summary>源码结构</summary>
 
 ```
-src/index.html        上游模板：只改了标题、本地资源引用、去掉登录弹窗、页脚文案
+src/index.html        上游模板：只改了标题、本地资源引用、去掉登录弹窗、页脚徽章
 src/styles.css        上游样式，一行未改（含已不再使用的登录弹窗样式）
+src/adapt.css         新增：适配样式（中文名字的粗体字面、页脚徽章定位）
 src/script.js         上游脚本：只在数据层调用点与「被砍能力」处改动，均有 移植差异 注释
 src/monitor.js        新增：极简探针适配层（RPC2 方法名 → REST、配置、历史记录）
 src/vendor/fonts.css  新增：本地字体声明（Archivo Black、Space Grotesk 400/500/700）
 vendor/               本地化的 ECharts 5.5.1 与字体 woff2（latin 子集，来自 @fontsource）
-scripts/              build / package / check-defaults / vendor-assets / serve
+scripts/              build / package / check-defaults / check-adapt / vendor-assets / serve
 theme.json            极简探针的主题清单（name / short / config / url）
 ```
 
