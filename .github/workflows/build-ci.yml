@@ -1,0 +1,36 @@
+name: Build CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: 校验配置默认值
+        run: node scripts/check-defaults.mjs
+      - name: 构建并打包
+        run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monitor-theme-1999-${{ github.sha }}
+          path: |
+            release/theme.tar.gz
+            release/*.sha256
+          if-no-files-found: error
+          compression-level: 9

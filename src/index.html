@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitor</title>
+  <meta name="description" content="A simple server monitor tool.">
+  <!-- 移植差异：字体与 ECharts 原本从 Google Fonts / jsDelivr 加载，现改为包内本地资源。
+       Google Fonts 在部分网络（含中国大陆）不可达，走 CDN 时页面会退回系统字体、视觉与设计不符；
+       本地化后主题包离线可用。字体仍是 Archivo Black 与 Space Grotesk（见 vendor/fonts.css）。 -->
+  <link rel="stylesheet" href="vendor/fonts.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="vendor/echarts.min.js"></script>
+  </head>
+<body>
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">
+        <span class="logo-icon">◆</span>
+        <h1 id="site-name">Monitor</h1>
+      </div>
+      <div class="header-controls">
+        <button class="btn-view active" data-view="grid" title="Grid View">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <rect x="1" y="1" width="7" height="7" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="12" y="1" width="7" height="7" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="1" y="12" width="7" height="7" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="12" y="12" width="7" height="7" stroke="currentColor" stroke-width="2" fill="none"/>
+          </svg>
+        </button>
+        <button class="btn-view" data-view="list" title="List View">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <rect x="1" y="2" width="18" height="3" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="1" y="8" width="18" height="3" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="1" y="14" width="18" height="3" stroke="currentColor" stroke-width="2" fill="none"/>
+          </svg>
+        </button>
+        <a href="/admin" class="btn-admin" title="Admin Panel">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"/>
+          </svg>
+          <span>Admin</span>
+        </a>
+      </div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-value" id="stat-nodes">0</span>
+        <span class="stat-label">NODES</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-online">0</span>
+        <span class="stat-label">ONLINE</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-cpu">0%</span>
+        <span class="stat-label">AVG CPU</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-ram">0%</span>
+        <span class="stat-label">AVG RAM</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-net-in">0 B/s</span>
+        <span class="stat-label">↓ DOWN</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-net-out">0 B/s</span>
+        <span class="stat-label">↑ UP</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="nodes-container" id="nodes-container">
+      <div class="loading" role="status" aria-label="Loading nodes">
+        <div class="loading-panel">
+          <div class="chart-loading-pixels" aria-hidden="true">
+            <span class="chart-loading-pixel" style="--pixel-index: 0"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 1"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 2"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 3"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 4"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 5"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 6"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 7"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 8"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 9"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 10"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 11"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 12"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 13"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 14"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 15"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 16"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 17"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 18"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 19"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 20"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 21"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 22"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 23"></span>
+            <span class="chart-loading-pixel" style="--pixel-index: 24"></span>
+          </div>
+          <span class="chart-loading-text">RESOLVING NODES...</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Node Detail Modal -->
+  <div class="modal-overlay" id="node-modal">
+    <div class="modal-container">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <div class="modal-content" id="modal-content">
+        <!-- Content injected by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 移植差异：上游的登录弹窗（POST /api/login + /api/oauth + 2FA）已整段移除。
+       极简探针的登录只在后台 /admin 完成，主题内不再收集凭据。 -->
+
+  <footer class="footer">
+    <div class="footer-content">
+      <p class="footer-powered">Powered by <strong><a href="https://github.com/monitor-probe/monitor" target="_blank" rel="noopener noreferrer">Monitor</a></strong></p>
+      <a class="footer-signature" href="https://github.com/r1cebucket/komari-theme-1999" target="_blank" rel="noopener noreferrer" aria-label="View the original Komari Theme 1999 by Ricebucket on GitHub">
+        <svg class="footer-signature-github" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.71.5.1.68-.22.68-.49 0-.24-.01-1.04-.02-1.89-2.78.62-3.37-1.21-3.37-1.21-.45-1.19-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.89 1.57 2.34 1.12 2.91.85.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.95a9.3 9.3 0 0 1 2.5.35c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.59.69.49A10.25 10.25 0 0 0 22 12.23C22 6.58 17.52 2 12 2Z"/>
+        </svg>
+        <span class="footer-signature-build">BUILD//1999</span>
+        <span class="footer-signature-divider" aria-hidden="true"></span>
+        <span class="footer-signature-label">THEME BY</span>
+        <strong class="footer-signature-author">RICEBUCKET</strong>
+      </a>
+    </div>
+  </footer>
+
+  <script src="monitor.js"></script>
+  <script src="script.js"></script>
+  </body>
+</html>

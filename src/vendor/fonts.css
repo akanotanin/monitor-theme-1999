@@ -1,0 +1,37 @@
+/*
+ * 本地化字体：上游 index.html 从 fonts.googleapis.com 直接拉这两款字体。
+ * 主题包要离线可用（且 Google Fonts 在部分网络里不可达），所以把 latin 子集的
+ * woff2 打进包里。文件来自 @fontsource（jsDelivr），与 Google Fonts 同一份字形。
+ * 字体名与上游一致，styles.css 一行都不用改。
+ */
+@font-face {
+  font-family: 'Archivo Black';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/archivo-black-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/space-grotesk-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/space-grotesk-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/space-grotesk-latin-700-normal.woff2') format('woff2');
+}

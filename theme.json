@@ -1,0 +1,78 @@
+{
+  "name": "Monitor 1999",
+  "short": "1999",
+  "description": "极简探针（Monitor）的新粗野主义风格主题：粗边框、硬阴影、像素化加载动画、卡片/列表双视图与节点详情历史图表。移植自 ricebucket/komari-theme-1999。",
+  "version": "1.0.0",
+  "author": "ricebucket",
+  "url": "https://github.com/akanotanin/monitor-theme-1999",
+  "config": [
+    {
+      "type": "title",
+      "label": "外观"
+    },
+    {
+      "type": "select",
+      "key": "accentColor",
+      "label": "强调色",
+      "default": "yellow",
+      "options": [
+        { "value": "yellow", "label": "yellow" },
+        { "value": "red", "label": "red" },
+        { "value": "blue", "label": "blue" },
+        { "value": "green", "label": "green" },
+        { "value": "purple", "label": "purple" }
+      ],
+      "help": "页头与高亮区块的强调色"
+    },
+    {
+      "type": "select",
+      "key": "cardStyle",
+      "label": "卡片边框风格",
+      "default": "thick",
+      "options": [
+        { "value": "thick", "label": "thick" },
+        { "value": "thin", "label": "thin" },
+        { "value": "double", "label": "double" }
+      ],
+      "help": "节点卡片的边框粗细：thick 粗边、thin 细边、double 双线"
+    },
+    {
+      "type": "boolean",
+      "key": "showUptime",
+      "label": "卡片显示运行时间",
+      "default": true,
+      "help": "关闭后节点卡片底部的 上行/下行/运行时间 一行不显示"
+    },
+    {
+      "type": "boolean",
+      "key": "showLoginButton",
+      "label": "显示后台入口按钮",
+      "default": true,
+      "help": "访客未登录时是否显示顶栏的后台入口按钮（点击跳转 /admin）"
+    },
+    {
+      "type": "title",
+      "label": "运行与视图"
+    },
+    {
+      "type": "number",
+      "key": "dataUpdateInterval",
+      "label": "数据刷新间隔",
+      "default": 3,
+      "min": 1,
+      "max": 60,
+      "help": "实时数据的刷新间隔，单位：秒（建议 2-10 秒）"
+    },
+    {
+      "type": "select",
+      "key": "defaultViewMode",
+      "label": "默认视图",
+      "default": "grid",
+      "options": [
+        { "value": "grid", "label": "grid（卡片）" },
+        { "value": "list", "label": "list（列表）" }
+      ],
+      "help": "访客首次打开首页时用的视图；访客自己切过之后以访客为准"
+    }
+  ]
+}

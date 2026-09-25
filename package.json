@@ -1,0 +1,20 @@
+{
+  "name": "monitor-theme-1999",
+  "version": "1.0.0",
+  "description": "Monitor 1999 —— 极简探针（Monitor）的新粗野主义风格主题，移植自 ricebucket/komari-theme-1999",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "ricebucket",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "vendor": "node scripts/vendor-assets.mjs",
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check-defaults.mjs",
+    "package": "node scripts/build.mjs && node scripts/package.mjs",
+    "preview": "node scripts/serve.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('release',{recursive:true,force:true})\""
+  }
+}
