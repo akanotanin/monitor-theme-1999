@@ -59,3 +59,18 @@ h1, h2, h3, h4, h5, h6,
     margin-left: auto;
   }
 }
+
+/* --------------------------------------------------------------------------
+   部件状态：JS 用 hidden 属性开关的元素
+   script.js 关闭「显示后台入口按钮」（showLoginButton=false）时，是给按钮加
+   hidden 属性。但浏览器默认的 [hidden] { display: none } 来自 UA 样式表，
+   而作者样式里的 .btn-admin { display: flex } 优先级更高——实测开关关掉后按钮
+   照旧显示（hidden 属性在、computed display 仍是 flex，34×34 可见）。
+   上游 styles.css 里没有全局 [hidden] 规则（只有 .auth-oauth[hidden]），所以这里
+   补一条作者规则；本文件在 styles.css 之后加载且特异性更高，不依赖顺序。
+   scripts/check-adapt.mjs 会核对：凡 script.js 用 hidden 属性开关的元素，
+   都必须有配套的 [hidden] 规则，否则这类开关以后还会静默失效。
+   -------------------------------------------------------------------------- */
+.btn-admin[hidden] {
+  display: none;
+}

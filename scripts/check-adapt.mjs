@@ -50,6 +50,36 @@ for (const [, font] of adapt.matchAll(/local\('([^']+)'\)/g)) {
   if (!font.trim()) problems.push(`adapt.css 里有一个空的 local()`);
 }
 
+// 4. JS 用 hidden 属性开关的元素，必须有配套的 [hidden] { display: none } 规则。
+//    作者样式里的 display 声明（如 .btn-admin { display: flex }）会压过 UA 的
+//    [hidden]，开关会静默失效（实测「显示后台入口按钮」关掉后按钮照样在）。
+const js = readFileSync('src/script.js', 'utf8');
+const selectorOf = new Map();
+for (const [, key, sel] of js.matchAll(/(\w+):\s*document\.(?:getElementById|querySelector)\(\s*'([^']+)'\s*\)/g)) {
+  selectorOf.set(key, sel.startsWith('.') || sel.startsWith('#') ? sel : `#${sel}`);
+}
+const hiddenSwitched = new Set();
+for (const [, key] of js.matchAll(/elements\.(\w+)\.hidden\s*=/g)) hiddenSwitched.add(key);
+if (!hiddenSwitched.size) problems.push('script.js 里一个 hidden 开关都没找到，检查脚本是否还适用');
+for (const key of hiddenSwitched) {
+  const sel = selectorOf.get(key);
+  if (!sel) {
+    problems.push(`script.js 用 hidden 属性开关 elements.${key}，但 elements 映射里没有它的选择器`);
+    continue;
+  }
+  const covered = [...rules(adapt), ...rules(styles)].some(
+    (rule) =>
+      rule.body.replace(/\s+/g, '').includes('display:none') &&
+      rule.selectors.some((s) => s.includes(sel.toLowerCase()) && s.includes('[hidden]'))
+  );
+  if (!covered) {
+    problems.push(
+      `elements.${key}（${sel}）由 script.js 用 hidden 属性开关，但没有任何 "${sel}[hidden] { display: none }" 规则：` +
+        `作者样式里的 display 会压过浏览器默认的 [hidden]，这个开关会静默失效`
+    );
+  }
+}
+
 const iStyles = html.indexOf('href="styles.css"');
 const iAdapt = html.indexOf('href="adapt.css"');
 if (iAdapt < 0) problems.push('index.html 没有引入 adapt.css');
