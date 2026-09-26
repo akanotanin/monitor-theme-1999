@@ -45,8 +45,9 @@
     // 留空 = 自动取有数据的前 3 条（CARD_PING_LINES）。名字对不上 Hub 的探测任务名
     // 就当作该节点没有这条线路，直接不显示（script.js 的 cardPingWanted）。
     cardPingLines: '',
-    // 新增：剩余价值卡片（参照上游 custom-body/cost.html）
-    showCostCard: true,
+    // 新增：成本汇总卡片（参照上游 custom-body/cost.html 的两张卡，移植版合成一张）
+    showCostCard: true,          // 右栏 RESIDUAL VALUE（还剩多少没用掉）
+    showCostMonthCard: true,     // 左栏 COST / MONTH（每月花多少）
     // 结算货币：节点用别的货币时按下面 costRates 折算成它
     costCurrency: 'CNY',
     // 汇率表：每行 `CODE=数字`（1 单位该货币 = 多少结算货币）。不联网取实时汇率，
@@ -217,7 +218,7 @@
             } else if (key === 'costRates') {
               // 汇率表就是多行文本，解析在 script.js（没配的货币不计入合计）
               if (typeof value === 'string') merged[key] = value.slice(0, 400);
-            } else if (key === 'showCostCard') {
+            } else if (key === 'showCostCard' || key === 'showCostMonthCard') {
               if (typeof value === 'boolean') merged[key] = value;
             }
           });

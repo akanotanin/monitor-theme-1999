@@ -95,7 +95,7 @@ const patchedClasses = [
   'group-tabs', 'group-tab', 'group-heading', 'group-heading-name', 'group-heading-count',
   'node-ping', 'node-ping-row', 'node-ping-name', 'node-ping-value', 'node-ping-loss',
   'net-rate', 'net-total-up', 'net-total-down',
-  'cost-card', 'cost-title', 'cost-amount', 'cost-divider', 'cost-chips',
+  'cost-card', 'cost-block', 'cost-title', 'cost-amount', 'cost-divider', 'cost-chips',
   'cost-chip', 'cost-chip-blue', 'cost-chip-red', 'cost-clear', 'cost-meta'
 ];
 const adaptSelectors = [...rules(adapt)].flatMap((rule) => rule.selectors);

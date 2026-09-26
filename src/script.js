@@ -56,7 +56,8 @@
     adminButton: document.querySelector('.btn-admin'),
     // 新增：分组筛选标签行（在 main 内、节点容器之上）
     groupTabs: document.getElementById('group-tabs'),
-    // 新增：剩余价值卡片（同样在 main 内，标签行与节点容器之间）
+    // 新增：成本汇总卡片（同样在 main 内，标签行与节点容器之间）。一张卡里两栏，
+    // 左边 COST / MONTH、右边 RESIDUAL VALUE，所以只有一个元素。
     costCard: document.getElementById('cost-card')
   };
 
@@ -449,7 +450,7 @@
       applyCardPings();
       refreshCardPings();
       // 新增：剩余价值卡片（自带 5 分钟节流，见 refreshCostCard）
-      refreshCostCard();
+      refreshCostCards();
 
       if (state.activeNodeUuid) {
         updateModalLiveInfo();
@@ -908,7 +909,7 @@
       renderGroupTabs([]);
       state.groupSignature = '';
       // 节点全没了（比如站点清空）：剩余价值卡片跟着收起，别留着上一次的数字
-      renderCostCard();
+      renderCostCards();
       elements.container.innerHTML = `
         <div class="empty-state">
           <h2>NO NODES</h2>
@@ -967,7 +968,7 @@
     applyCardPings();
     refreshCardPings();
     // 新增：剩余价值卡片（节点价格/到期时间变了或设置改了，跟着这次渲染一起重算）
-    renderCostCard();
+    renderCostCards();
   }
 
   function updateAllCards() {
@@ -1683,7 +1684,7 @@
   }
 
   /* --------------------------------------------------------------------------
-     移植差异：剩余价值卡片（站点设置 showCostCard / costCurrency / costRates）
+     移植差异：成本汇总卡片（站点设置 showCostCard / showCostMonthCard / costCurrency / costRates）
      参照上游主题仓库的 custom-body/cost.html（那张 RESIDUAL VALUE 卡片），搬到极简探针字段上：
        · 价格 / 货币 / 付款周期 / 到期时间 都是 Hub 节点自带字段，/api/nodes 匿名可见；
        · 剩余天数**直接用 Hub 算好的 expires_in**（整数天，按 Hub 的日历算），不要拿访客的
@@ -1696,8 +1697,10 @@
        · 多货币按设置里的**固定汇率**折算成结算货币，不联网取实时汇率——主题其余部分也是全离线
          （CDN 已本地化），墙内访客去请求外部汇率接口本来就会失败。缺汇率的货币不折算、不计入
          合计，标签上标「?」并在控制台提示一次。
-     上游那张卡片的结构保持不变：标题 + 大数字 | 竖线 | 告警印章 / ALL CLEAR。
-     一台都没填价格时整块收起、不留空位。
+     上游把「每月花多少」与「还剩多少」做成两张卡，移植版按站点要求合成一张卡里的两栏：
+     左边 COST / MONTH（每月固定支出，与到期时间无关），中间竖线，右边 RESIDUAL VALUE
+     （标题 + 大数字 + 告警印章 / ALL CLEAR），最右边一行小字。两栏各自可在后台关掉
+     （showCostMonthCard / showCostCard）；一台都没填价格时整块收起、不留空位。
      -------------------------------------------------------------------------- */
   // 付款周期 → 天数（与 Hub 面板的七档一一对应；天数口径写进 README，Hub 自己没有这张表）。
   // 注意这里**不给默认值**：`once`（一次性）以及以后 Hub 新加的档次都推不出每日成本，
@@ -1714,8 +1717,19 @@
   const COST_CARD_TTL = 300000;    // 页面长时间开着时 5 分钟重算一次（这个数字是天级变化的）
   const CURRENCY_SYMBOLS = { USD: '$', CNY: '¥', EUR: '€', GBP: '£', JPY: '¥' };
 
-  function costCardEnabled() {
+  // 卡片右栏 RESIDUAL VALUE
+  function costResidualEnabled() {
     return state.settings.showCostCard !== false;
+  }
+
+  // 卡片左栏 COST / MONTH
+  function costCardMonthEnabled() {
+    return state.settings.showCostMonthCard !== false;
+  }
+
+  // 整块卡片：两栏都关掉才收起（只看其中一栏会把另一栏一起关掉，实测踩过）
+  function costCardEnabled() {
+    return costResidualEnabled() || costCardMonthEnabled();
   }
 
   function costBaseCurrency() {
@@ -1749,95 +1763,133 @@
     console.warn(`[Monitor Theme] 剩余价值卡片：汇率表里没有 ${code}，这部分未计入合计（主题设置 → 汇率表）`);
   }
 
-  // 返回卡片的 innerHTML；没有任何计费信息时返回 null（调用方负责收起整块）
-  function costCardHTML() {
+  // 每种货币一个小计标签。结算货币本身也列出来（上游 monthly 卡的写法：大数字是折算后的
+  // 合计，标签上是该货币的原始金额），汇率表里没有的货币标「?」、不计入合计。
+  function costChips(bucket, base, rates, missingRates) {
+    const chips = [];
+    [...bucket.subtotals.entries()].sort((a, b) => b[1] - a[1]).forEach(([code, amount]) => {
+      const unknownRate = code !== base && !rates[code];
+      if (unknownRate) missingRates.add(code);
+      const title = unknownRate
+        ? '汇率表里没有这个货币，未计入合计'
+        : `折合 ${costMoney(code === base ? amount : amount * rates[code], base)}`;
+      chips.push(
+        `<span class="cost-chip cost-chip-blue" title="${title}">${costMoney(amount, code)}${unknownRate ? ' ?' : ''}</span>`
+      );
+    });
+    return chips;
+  }
+
+  // 一次遍历同时算出两栏小计：
+  //   month = COST / MONTH，每月花多少（与到期时间无关）
+  //   resid = RESIDUAL VALUE，还剩多少没用掉（要到期时间）
+  // 返回 null 表示一台节点都没填价格——整块卡片不出现。
+  function costSummary() {
     const base = costBaseCurrency();
     const rates = costRates(base);
-    const subtotals = new Map();   // 货币 → 剩余价值小计
     const missingRates = new Set();
-    const warn = [];               // 7 天内到期
-    const expired = [];
-    let total = 0;
-    let paid = 0;
-    let daysSum = 0;
-    let withExpiry = 0;
-    let notAmortized = 0;   // 有价格但付款周期推不出每日成本（如一次性）的台数
+    const month = { subtotals: new Map(), total: 0, count: 0 };
+    const resid = { subtotals: new Map(), total: 0, paid: 0, daysSum: 0, withExpiry: 0, warn: [], expired: [] };
+    let skipped = 0;   // 有价格但付款周期推不出成本的台数（一次性等），两栏都不计入
+
+    // 记到对应那一栏：能用结算货币就直接加，否则按汇率折算；缺汇率就只标出来
+    const add = (bucket, code, amount) => {
+      bucket.subtotals.set(code, (bucket.subtotals.get(code) || 0) + amount);
+      if (code === base) bucket.total += amount;
+      else if (rates[code]) bucket.total += amount * rates[code];
+      else missingRates.add(code);
+    };
 
     state.nodes.forEach(node => {
       const price = Number(node.price);
       if (!isFinite(price) || price <= 0) return;
-      paid += 1;
+      month.count += 1;
+      resid.paid += 1;
       const code = String(node.currency || base).trim().toUpperCase() || base;
-      // 没填到期时间时 expires_in 是 null —— 注意 Number(null) === 0，会被当成「今天到期」
-      // 而多出一行 (0D) 告警，所以这里必须显式判空，不能只靠 isFinite。
+      // 付款周期推不出每日/每月成本（一次性、Hub 以后新加的档次）：两栏都不计入，
+      // 不拿 30 天之类的默认值硬凑数字。注意这里不给默认值，见 COST_CYCLE_DAYS 的注释。
+      const cycleDays = COST_CYCLE_DAYS[String(node.billing_cycle || '')];
+      if (!cycleDays) { skipped += 1; return; }
+
+      add(month, code, (price / cycleDays) * 30);
+
+      // 剩余价值：没填到期时间（expires_in 是 null）或已过期的节点不计入。
+      // 注意 Number(null) === 0，会被当成「今天到期」而多出一行 (0D) 告警，必须显式判空。
       if (node.expires_in === null || node.expires_in === undefined || node.expires_in === '') return;
       const days = Number(node.expires_in);
-      if (!isFinite(days)) return;                    // 到期时间格式不认识：不计入剩余价值
-      withExpiry += 1;
-      if (days < 0) { expired.push({ name: node.name }); return; }
-      // 付款周期推不出每日成本（一次性 / Hub 以后新加的档次）：不计入合计，只记个数
-      const cycleDays = COST_CYCLE_DAYS[String(node.billing_cycle || '')];
-      if (!cycleDays) { notAmortized += 1; return; }
-      const residual = (price / cycleDays) * days;
-      subtotals.set(code, (subtotals.get(code) || 0) + residual);
-      daysSum += days;
-      if (days <= COST_WARN_DAYS) warn.push({ name: node.name, days });
-      if (code === base) total += residual;
-      else if (rates[code]) total += residual * rates[code];
-      else missingRates.add(code);
+      if (!isFinite(days)) return;                    // 到期时间格式不认识
+      resid.withExpiry += 1;
+      if (days < 0) { resid.expired.push({ name: node.name }); return; }
+      add(resid, code, (price / cycleDays) * days);
+      resid.daysSum += days;
+      if (days <= COST_WARN_DAYS) resid.warn.push({ name: node.name, days });
     });
 
-    if (!paid) return null;   // 没有任何计费信息：整块不出现
+    if (!month.count) return null;   // 没有任何计费信息：整块不出现
+    return { base, rates, missingRates, month, resid, skipped };
+  }
 
-    const chips = [];
-    if (subtotals.size > 1) {
-      // 只有一种货币时小计就是总额，不重复摆一遍
-      [...subtotals.entries()].sort((a, b) => b[1] - a[1]).forEach(([code, amount]) => {
-        const unknownRate = code !== base && !rates[code];
-        const title = unknownRate
-          ? '汇率表里没有这个货币，未计入合计'
-          : `折合 ${costMoney(code === base ? amount : amount * rates[code], base)}`;
-        chips.push(
-          `<span class="cost-chip cost-chip-blue" title="${title}">${costMoney(amount, code)}${unknownRate ? ' ?' : ''}</span>`
-        );
-      });
-    }
-    warn.sort((a, b) => a.days - b.days).forEach(node => {
-      chips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (${node.days}D)</span>`);
-    });
-    expired.forEach(node => {
-      chips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (EXPIRED)</span>`);
-    });
-    if (!chips.length) {
-      chips.push(`<span class="cost-clear">${withExpiry ? 'ALL CLEAR ✓' : 'NO EXPIRY SET'}</span>`);
-    }
+  function costCardHTML() {
+    const showMonth = costCardMonthEnabled();
+    const showResid = costResidualEnabled();
+    if (!showMonth && !showResid) return null;
+    const s = costSummary();
+    if (!s) return null;
 
-    const usedRates = [...subtotals.keys()]
-      .filter(code => code !== base && rates[code])
-      .map(code => `${code} ${rates[code]}`);
-    const meta = [`${paid} PAID`];
-    if (withExpiry) meta.push(`${daysSum}D LEFT`);
-    if (usedRates.length) meta.push(`RATE ${usedRates.join(' / ')}`);
-    if (notAmortized) {
-      meta.push(
-        `<span title="付款周期推不出每日成本（一次性等），这些节点的金额没有算进合计">${notAmortized} SKIPPED</span>`
+    const blocks = [];
+    if (showMonth) {
+      blocks.push(
+        costBlock('COST / MONTH', costMoney(s.month.total, s.base), costChips(s.month, s.base, s.rates, s.missingRates))
       );
     }
 
-    missingRates.forEach(warnMissingRate);
+    if (showResid) {
+      const residChips = costChips(s.resid, s.base, s.rates, s.missingRates);
+      s.resid.warn.sort((a, b) => a.days - b.days).forEach(node => {
+        residChips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (${node.days}D)</span>`);
+      });
+      s.resid.expired.forEach(node => {
+        residChips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (EXPIRED)</span>`);
+      });
+      if (!residChips.length) {
+        residChips.push(`<span class="cost-clear">${s.resid.withExpiry ? 'ALL CLEAR ✓' : 'NO EXPIRY SET'}</span>`);
+      }
+      blocks.push(costBlock('RESIDUAL VALUE', costMoney(s.resid.total, s.base), residChips));
+    }
 
+    // 右侧小字：在算的台数 / 剩余天数合计 / 用到的汇率 / 没摊进来的台数
+    const meta = [`${s.month.count} PAID`];
+    if (showResid && s.resid.withExpiry) meta.push(`${s.resid.daysSum}D LEFT`);
+    const usedRates = [...new Set([
+      ...(showMonth ? s.month.subtotals.keys() : []),
+      ...(showResid ? s.resid.subtotals.keys() : [])
+    ])]
+      .filter(code => code !== s.base && s.rates[code])
+      .map(code => `${code} ${s.rates[code]}`);
+    if (usedRates.length) meta.push(`RATE ${usedRates.join(' / ')}`);
+    if (s.skipped) {
+      meta.push(
+        `<span title="付款周期推不出成本（一次性等），这些节点的金额没有算进合计">${s.skipped} SKIPPED</span>`
+      );
+    }
+
+    s.missingRates.forEach(warnMissingRate);
+
+    return `${blocks.join('<div class="cost-divider"></div>')}<div class="cost-meta">${meta.join(' · ')}</div>`;
+  }
+
+  // 一栏：标题 + 大数字 + 标签行
+  function costBlock(title, amount, chips) {
     return `
-      <div class="cost-total">
-        <span class="cost-title">RESIDUAL VALUE</span>
-        <div class="cost-amount">${costMoney(total, base)}</div>
+      <div class="cost-block">
+        <span class="cost-title">${title}</span>
+        <div class="cost-amount">${amount}</div>
+        <div class="cost-chips">${chips.join('')}</div>
       </div>
-      <div class="cost-divider"></div>
-      <div class="cost-chips">${chips.join('')}</div>
-      <div class="cost-meta">${meta.join(' · ')}</div>
     `;
   }
 
-  function renderCostCard() {
+  function renderCostCards() {
     if (!elements.costCard) return;
     const html = costCardEnabled() ? costCardHTML() : null;
     // 整块收起时用 hidden（adapt.css 里有配套的 #cost-card[hidden] { display: none }）；
@@ -1853,11 +1905,11 @@
   }
 
   // 指标轮询里顺带刷新（5 分钟一次）：页面开着过夜时，剩余天数不会一直停在昨天
-  function refreshCostCard() {
+  function refreshCostCards() {
     const now = Date.now();
     if (now - state.costCardAt < COST_CARD_TTL) return;
     state.costCardAt = now;
-    renderCostCard();
+    renderCostCards();
   }
 
   function percentile(values, p) {
@@ -2081,7 +2133,7 @@
         applyCardPings();
         refreshCardPings();
         // 剩余价值：回到前台就重算一次（可能已经跨天，剩余天数该往下走了）
-        renderCostCard();
+        renderCostCards();
       }
     });
 
