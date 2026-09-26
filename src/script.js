@@ -1526,12 +1526,36 @@
   // 所以卡片上的数字与点开卡片后「延迟监控」里第一条线路的最新值必然一致。
   // 上游同类主题（Gongsc/Theme-Glassmorphism 的 NodeMultiPing）是每张卡片各取一次、
   // 60 秒一轮、页面不可见时不取，这里沿用同样的口径，免得给 Hub 添无谓的请求。
-  const CARD_PING_LINES = 3;    // 三网：取 Hub 里排在最前的 3 条探测线路
+  const CARD_PING_LINES = 3;    // 自动模式：取 Hub 里排在最前的 3 条探测线路
   const CARD_PING_TTL = 60000;  // 同一张卡片的延迟最多 60 秒取一次
   const CARD_PING_CONCURRENCY = 3;
 
   function cardPingEnabled() {
     return state.settings.showNodePing !== false;
+  }
+
+  // 站点设置 cardPingLines：站长指定的线路名清单（换行 / 逗号 / 顿号 / 分号分隔）。
+  // 返回数组 = 按填写的顺序显示这几条；返回空数组 = 自动模式（有数据的前 3 条）。
+  // 匹配用「去掉首尾空白后完全相同」，实在对不上就不显示那条——线路名是 Hub 后台的
+  // 探测任务名，可能带空格和间隔号，站长是照抄过去的，不做模糊匹配（猜错反而更乱）。
+  const cardPingWarnedNames = new Set();
+  function cardPingWanted() {
+    const raw = state.settings.cardPingLines;
+    if (typeof raw !== 'string' || !raw.trim()) return [];
+    const names = [];
+    raw.split(/[\n,，、;；]+/).forEach(part => {
+      const name = part.trim();
+      if (name && names.indexOf(name) < 0) names.push(name);
+    });
+    return names;
+  }
+
+  // 站长填的线路名在某个节点上没有：提示一次（不是每张卡片都刷屏），
+  // 也可能是该节点压根没挂这条线路的任务——两种都只提示不显示。
+  function warnMissingPingName(name) {
+    if (cardPingWarnedNames.has(name)) return;
+    cardPingWarnedNames.add(name);
+    console.warn(`[Monitor Theme] 卡片三网延迟：找不到名为「${name}」的探测线路，请照抄 Hub 后台的探测任务名`);
   }
 
   // 缓存里的行 → 卡片上的延迟块。一行都没有时返回 null：宁可不插，也不留一个空框。
@@ -1607,10 +1631,27 @@
           try {
             const response = await rpcCall('common:getRecords', { uuid, type: 'ping', hours: 1 });
             const stats = computeTaskStats(response?.records || [], response?.tasks || [], response?.loss || null);
+            // 站长指定了线路（cardPingLines）就按他的清单和顺序取——那几条线路即使这一轮
+            // 没有采样也留着（卡片上显示“-”），这样每张卡片的行数和顺序都稳定；
+            // 没指定就沿用自动模式：有数据的前 3 条。
+            const wanted = cardPingWanted();
+            let rows;
+            if (wanted.length) {
+              const byName = new Map();
+              stats.forEach(stat => byName.set(String(stat.name).trim(), stat));
+              rows = [];
+              wanted.forEach(name => {
+                const matched = byName.get(name);
+                if (matched) rows.push(matched);
+                else warnMissingPingName(name);
+              });
+            } else {
+              rows = stats.filter(stat => stat.total > 0).slice(0, CARD_PING_LINES);
+            }
             state.cardPing.set(uuid, {
               at: Date.now(),
-              // 只保留有采样的线路，顺序仍是 Hub 的任务顺序
-              rows: stats.filter(stat => stat.total > 0).slice(0, CARD_PING_LINES)
+              // rows 已经由上面的分支定好：指定模式=站长的清单顺序，自动模式=有数据的前 3 条
+              rows
             });
           } catch (error) {
             // 单张卡片取不到不影响其它卡片；不写缓存，下一轮再试

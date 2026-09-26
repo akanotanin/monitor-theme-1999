@@ -40,7 +40,11 @@
     // 列表视图不受它影响，始终按分组分段。
     cardGroupView: 'tabs',
     // 新增：卡片上的三网延迟（探测线路的最新延迟，最多 3 条）
-    showNodePing: true
+    showNodePing: true,
+    // 卡片上要显示哪几条探测线路：名字用换行或逗号分隔，按填写的顺序显示；
+    // 留空 = 自动取有数据的前 3 条（CARD_PING_LINES）。名字对不上 Hub 的探测任务名
+    // 就当作该节点没有这条线路，直接不显示（script.js 的 cardPingWanted）。
+    cardPingLines: ''
   };
 
   var ACCENTS = ['yellow', 'red', 'blue', 'green', 'purple'];
@@ -188,6 +192,10 @@
               merged[key] = Math.min(60, Math.max(1, Math.round(value)));
             } else if (key === 'showUptime' || key === 'showLoginButton' || key === 'showNodePing') {
               if (typeof value === 'boolean') merged[key] = value;
+            } else if (key === 'cardPingLines') {
+              // 只是个筛选条件（线路名清单），非字符串一律忽略；长度上限防呆，
+              // 不在页面端裁剪成 3 条——站长填了什么就显示什么，卡片变高是他的选择。
+              if (typeof value === 'string') merged[key] = value.slice(0, 200);
             }
           });
         }

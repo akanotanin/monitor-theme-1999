@@ -39,6 +39,34 @@ for (const key of Object.keys(declared)) {
   if (!(key in defaults)) problems.push(`src/monitor.js 的 DEFAULTS 缺少 ${key}（theme.json 有声明，页面端就没有兜底值）`);
 }
 
+// 字段类型与默认值必须对得上：Hub 面板用 configForm() 逐项过滤，其中 fits() 会按类型
+// 校验默认值，不合法的那一项**静默不出现在面板上**（没有报错、页面也不报错，只是站长
+// 看不到这个选项）。同类硬规则：select 的 options 里不能有空值（'' 就过不了），
+// 所以「留空=自动」这种选项不能用 select 表达，只能给 string/text 让站长自己留空。
+const expectedType = (value) =>
+  typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'boolean' : 'string';
+const typeFits = (fieldType, expected) =>
+  (fieldType === 'number' && expected === 'number') ||
+  (fieldType === 'boolean' && expected === 'boolean') ||
+  ((fieldType === 'select' || fieldType === 'string' || fieldType === 'text') && expected === 'string');
+for (const item of theme.config || []) {
+  if (!item || !item.key) continue;
+  if (item.type === 'title') continue;
+  const expected = expectedType(declared[item.key]);
+  if (!typeFits(item.type, expected)) {
+    problems.push(
+      `${item.key} 声明为 ${item.type}，默认值却是 ${expected}：Hub 的 fits() 判定它不合法，` +
+        '这一项会静默从后台面板里消失'
+    );
+  }
+  if (item.type === 'select') {
+    const values = (item.options || []).map((option) => (typeof option === 'string' ? option : option.value));
+    if (values.some((value) => value === '')) {
+      problems.push(`${item.key} 的 options 里有空值：Hub 的 configForm 要求选项非空，否则整项不显示在面板上`);
+    }
+  }
+}
+
 // 选项列表也要对得上：适配层不认识的值会被丢掉，后台选了却看不到效果
 const optionChecks = [
   ['accentColor', 'ACCENTS'],
