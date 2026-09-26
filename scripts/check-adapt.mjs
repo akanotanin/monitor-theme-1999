@@ -180,6 +180,14 @@ if (!jsCode.includes("cardGroupView === 'none'")) {
     "script.js 里没有 cardGroupView === 'none' 的分支：后台选「不显示分组」时页面不会有任何变化"
   );
 }
+// 「不显示分组」按需求在**两个视图**都生效：判断条件里不能再出现 viewMode
+// （曾经写成只作用于卡片视图，被用户当场要求收紧）。
+const noneLine = jsCode.split('\n').find((line) => line.includes("cardGroupView === 'none'"));
+if (noneLine && /viewMode/.test(noneLine)) {
+  problems.push(
+    'cardGroupView === none 的判断里出现了 viewMode：这个取值要在两个视图都不显示分组标签行'
+  );
+}
 for (const [label, source] of [
   ['src/script.js', jsCode],
   ['src/monitor.js', stripJsComments(readFileSync('src/monitor.js', 'utf8'))],

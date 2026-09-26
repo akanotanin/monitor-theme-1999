@@ -2,7 +2,7 @@
   "name": "Monitor 1999",
   "short": "1999",
   "description": "极简探针（Monitor）的新粗野主义风格主题：粗边框、硬阴影、像素化加载动画、卡片/列表双视图与节点详情历史图表。移植自 ricebucket/komari-theme-1999。",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-1999",
   "config": [
@@ -95,7 +95,7 @@
         { "value": "sections", "label": "sections（分组标签 + 分段标题）" },
         { "value": "none", "label": "none（不显示分组按钮）" }
       ],
-      "help": "只影响卡片视图；列表视图始终是「分组标签 + 分段标题」。选 none 时卡片视图连分组标签那一行都不出现（节点按后台顺序平铺）。后台给节点设过分组时才有区别"
+      "help": "tabs / sections 只影响卡片视图（列表视图始终有分段标题）；选 none 时两个视图都不出现分组标签那一行（筛选入口），列表视图仍按分组标题分段、卡片视图直接平铺。后台给节点设过分组时才有区别"
     },
     {
       "type": "title",

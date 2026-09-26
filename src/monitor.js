@@ -35,8 +35,8 @@
     showLoginButton: true,
     dataUpdateInterval: 3,
     defaultViewMode: 'grid',
-    // 卡片视图怎么展示分组：tabs = 只有顶栏分组标签（默认），sections = 标签 + 分段标题，
-    // none = 分组标签整行不出现。列表视图不受它影响，始终是「标签 + 分段标题」。
+    // 分组怎么展示：tabs = 只有顶栏分组标签（默认），sections = 卡片视图再加分段标题，
+    // none = 分组标签整行不出现（两个视图都不出现；列表视图仍按分组分段）。
     cardGroupView: 'tabs',
     // 新增：卡片上的三网延迟（探测线路的最新延迟，最多 3 条）
     showNodePing: true,

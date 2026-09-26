@@ -858,10 +858,11 @@
     const tabs = elements.groupTabs;
     if (!tabs) return;
 
-    // 新增：卡片视图选了「不显示分组」（cardGroupView === 'none'）时，顶栏标签整行不出现。
-    // 同时把筛选清空：按钮都看不见了，留着一个访客既看不着也点不掉的筛选会让人以为节点丢了。
-    // 列表视图不受这个设置影响，切过去（setViewMode → render）标签照旧出现。
-    if (state.settings.cardGroupView === 'none' && state.viewMode === 'grid') {
+    // 新增（2026-09-26 按要求收紧为「两个视图都不显示」）：选了「不显示分组」（cardGroupView === 'none'）
+    // 时，分组标签整行在两个视图里都不出现——这是个筛选入口，按钮都看不见了就必须把筛选清空，
+    // 否则会留着一个访客既看不着也点不掉的筛选，让人以为节点丢了。
+    // 分段标题不归它管：列表视图仍按分组分段，卡片视图本来就只有 tabs/sections 两档才分段。
+    if (state.settings.cardGroupView === 'none') {
       state.groupFilter = null;
       state.groupTabKeys = [];
       elements.groupTabs.hidden = true;
