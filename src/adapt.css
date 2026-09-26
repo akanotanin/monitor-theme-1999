@@ -246,6 +246,141 @@ h1, h2, h3, h4, h5, h6,
   color: var(--text-muted);
 }
 
+/* --------------------------------------------------------------------------
+   移植差异：剩余价值卡片（站点设置 showCostCard / costCurrency / costRates）
+   参照上游主题仓库的 custom-body/cost.html，但排版改用它自己的那套语言与卡片一致：
+     · 与 .node-card 同款粗边框 + 硬阴影（含 card-style-thin / -double 变体）；
+     · 结构 = 标题+大数字 | 竖线 | 印章标签 / ALL CLEAR | 右侧小字元信息，窄屏自动换行；
+     · 印章标签（蓝=按货币小计、红=7 天内到期或已过期）沿用上游的贴纸风格。
+   节点一台都没填价格时由 JS 加 hidden 收起（下面有配套的 [hidden] 规则）。
+   -------------------------------------------------------------------------- */
+.cost-card {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  background: var(--card-bg);
+  border: var(--border-width) solid var(--black);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow);
+}
+
+.cost-title {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: 'Archivo Black', 'Monitor Display CJK', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--black);
+}
+
+.cost-amount {
+  font-family: 'Archivo Black', 'Monitor Display CJK', sans-serif;
+  font-size: 1.8rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--black);
+  text-shadow: 1px 1px 0 var(--white);
+}
+
+.cost-divider {
+  width: 4px;
+  height: 3rem;
+  flex-shrink: 0;
+  background: var(--black);
+}
+
+.cost-chips {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.cost-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border: 2px solid var(--black);
+  box-shadow: 3px 3px 0 var(--black);
+  font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 0.75rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--black);
+}
+
+.cost-chip-blue {
+  background: var(--accent-blue);
+}
+
+.cost-chip-red {
+  background: var(--accent-red);
+}
+
+/* 没有告警时的那行字：与卡片里的次要信息同一个灰度 */
+.cost-clear {
+  font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cost-meta {
+  margin-left: auto;
+  text-align: right;
+  font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* 卡片风格变体：与 .node-card 的三种粗细保持一致 */
+.card-style-thin .cost-card {
+  border-width: 2px;
+  box-shadow: 4px 4px 0 var(--shadow);
+}
+
+.card-style-double .cost-card {
+  border-width: 6px;
+  box-shadow: 8px 8px 0 var(--shadow);
+  position: relative;
+}
+
+.card-style-double .cost-card::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 2px solid var(--black);
+  pointer-events: none;
+}
+
+#cost-card[hidden] {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .cost-card {
+    gap: 1rem;
+    padding: 1rem;
+  }
+  .cost-divider {
+    display: none;
+  }
+  .cost-amount {
+    font-size: 1.5rem;
+  }
+}
+
 /* 标题下那行「系统 · CPU 型号」在窄卡片里会折成两行，上游的行高是 normal（约 1.15），
    两行贴着像一块灰砖。给到 1.35 后它读起来才是一段说明文字，不会和标题、指标抢注意力。 */
 .node-info {

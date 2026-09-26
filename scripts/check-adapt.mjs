@@ -72,10 +72,14 @@ for (const key of hiddenSwitched) {
     problems.push(`script.js 用 hidden 属性开关 elements.${key}，但 elements 映射里没有它的选择器`);
     continue;
   }
+  // 选择器里必须真的连着写 `sel[hidden]`：只看「包含 sel」+「包含 [hidden]」会被
+  // 改名后的 #cost-card-XX[hidden] 这种规则骗过（实测漏检过一次）。
+  const escaped = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').toLowerCase();
+  const hiddenPattern = new RegExp(`${escaped}\\[hidden\\]`);
   const covered = [...rules(adapt), ...rules(styles)].some(
     (rule) =>
       rule.body.replace(/\s+/g, '').includes('display:none') &&
-      rule.selectors.some((s) => s.includes(sel.toLowerCase()) && s.includes('[hidden]'))
+      rule.selectors.some((s) => hiddenPattern.test(s))
   );
   if (!covered) {
     problems.push(
@@ -90,7 +94,9 @@ for (const key of hiddenSwitched) {
 const patchedClasses = [
   'group-tabs', 'group-tab', 'group-heading', 'group-heading-name', 'group-heading-count',
   'node-ping', 'node-ping-row', 'node-ping-name', 'node-ping-value', 'node-ping-loss',
-  'net-rate', 'net-total-up', 'net-total-down'
+  'net-rate', 'net-total-up', 'net-total-down',
+  'cost-card', 'cost-title', 'cost-amount', 'cost-divider', 'cost-chips',
+  'cost-chip', 'cost-chip-blue', 'cost-chip-red', 'cost-clear', 'cost-meta'
 ];
 const adaptSelectors = [...rules(adapt)].flatMap((rule) => rule.selectors);
 const hasClass = (selectors, cls) =>

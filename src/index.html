@@ -78,6 +78,9 @@
          页头高度会被 JS 拿去算 main 的 padding-top，标签行会随分组数量换行，
          塞进页头会让这块高度变得不可预测。 -->
     <div class="group-tabs" id="group-tabs" role="group" aria-label="按分组筛选" hidden></div>
+    <!-- 新增：剩余价值卡片（站点设置 showCostCard）。内容由 script.js 的 renderCostCard() 生成；
+         节点一台都没填价格时整块收起、不留空位（hidden）。 -->
+    <div class="cost-card" id="cost-card" hidden></div>
     <div class="nodes-container" id="nodes-container">
       <div class="loading" role="status" aria-label="Loading nodes">
         <div class="loading-panel">

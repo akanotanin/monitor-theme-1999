@@ -102,6 +102,38 @@
         { "value": "sections", "label": "sections（分组标签 + 分段标题）" }
       ],
       "help": "只影响卡片视图；列表视图始终按分组分段。后台给节点设过分组时这两种才出现"
+    },
+    {
+      "type": "title",
+      "label": "剩余价值卡片"
+    },
+    {
+      "type": "boolean",
+      "key": "showCostCard",
+      "label": "显示剩余价值卡片",
+      "default": true,
+      "help": "在分组标签下方显示一张汇总卡片：按节点的价格、付款周期、到期时间算出还没用掉的金额，并把 7 天内到期的节点标红。周期按 月付=30/季付=90/半年=180/年付=365/两年=730/三年=1095 天折算，「一次性」推不出每日成本、不计入合计（只在小字里标出来）。节点都没填价格时这张卡片整块不出现"
+    },
+    {
+      "type": "select",
+      "key": "costCurrency",
+      "label": "结算货币",
+      "default": "CNY",
+      "options": [
+        { "value": "CNY", "label": "CNY（¥）" },
+        { "value": "USD", "label": "USD（$）" },
+        { "value": "EUR", "label": "EUR（€）" },
+        { "value": "GBP", "label": "GBP（£）" },
+        { "value": "JPY", "label": "JPY（¥）" }
+      ],
+      "help": "汇总时用的货币；节点填的货币与它不同时按下面的汇率表折算"
+    },
+    {
+      "type": "text",
+      "key": "costRates",
+      "label": "汇率表",
+      "default": "USD=7.2\nEUR=7.8\nGBP=9.1\nJPY=0.048",
+      "help": "每行写 `货币=汇率`，意思是 1 单位该货币折合多少结算货币（上例是 1 USD = 7.2 CNY）。主题不联网取实时汇率，数字变了要自己改。没配汇率的货币不折算、不计入合计，卡片上会标一个「?」"
     }
   ]
 }

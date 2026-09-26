@@ -44,12 +44,20 @@
     // 卡片上要显示哪几条探测线路：名字用换行或逗号分隔，按填写的顺序显示；
     // 留空 = 自动取有数据的前 3 条（CARD_PING_LINES）。名字对不上 Hub 的探测任务名
     // 就当作该节点没有这条线路，直接不显示（script.js 的 cardPingWanted）。
-    cardPingLines: ''
+    cardPingLines: '',
+    // 新增：剩余价值卡片（参照上游 custom-body/cost.html）
+    showCostCard: true,
+    // 结算货币：节点用别的货币时按下面 costRates 折算成它
+    costCurrency: 'CNY',
+    // 汇率表：每行 `CODE=数字`（1 单位该货币 = 多少结算货币）。不联网取实时汇率，
+    // 用完记得自己更新；缺汇率的货币不计入合计（卡片上标「?」）。
+    costRates: 'USD=7.2\nEUR=7.8\nGBP=9.1\nJPY=0.048'
   };
 
   var ACCENTS = ['yellow', 'red', 'blue', 'green', 'purple'];
   var CARD_STYLES = ['thick', 'thin', 'double'];
   var VIEW_MODES = ['grid', 'list'];
+  var COST_CURRENCIES = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'];
   var CARD_GROUP_VIEWS = ['tabs', 'sections'];
 
   // Hub 的历史窗口上限（见 src/api.rs 的 PUBLIC_HOURS / ADMIN_HOURS）
@@ -138,7 +146,15 @@
       traffic_limit: numberOr(node.traffic_limit, 0),
       traffic_limit_type: node.traffic_mode || 'max',   // sum / up / down / max
       virtualization: node.virt || '',
-      kernel_version: node.kernel || ''
+      kernel_version: node.kernel || '',
+      // 新增：剩余价值卡片要用的计费字段（Hub 的 /api/nodes 公开字段，匿名可见）。
+      // expires_in 是 Hub 按自己的日历算好的整数天（已过期为负数），没填到期时间是 null——
+      // 这里原样透传，卡片那边不再自己拿访客的 Date 去减。
+      price: numberOr(node.price, 0),
+      currency: node.currency || '',
+      billing_cycle: node.billing_cycle || '',
+      expires_at: node.expires_at || '',
+      expires_in: typeof node.expires_in === 'number' ? node.expires_in : null
     };
   }
 
@@ -196,6 +212,13 @@
               // 只是个筛选条件（线路名清单），非字符串一律忽略；长度上限防呆，
               // 不在页面端裁剪成 3 条——站长填了什么就显示什么，卡片变高是他的选择。
               if (typeof value === 'string') merged[key] = value.slice(0, 200);
+            } else if (key === 'costCurrency') {
+              if (COST_CURRENCIES.indexOf(value) >= 0) merged[key] = value;
+            } else if (key === 'costRates') {
+              // 汇率表就是多行文本，解析在 script.js（没配的货币不计入合计）
+              if (typeof value === 'string') merged[key] = value.slice(0, 400);
+            } else if (key === 'showCostCard') {
+              if (typeof value === 'boolean') merged[key] = value;
             }
           });
         }

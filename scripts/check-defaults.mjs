@@ -72,7 +72,8 @@ const optionChecks = [
   ['accentColor', 'ACCENTS'],
   ['cardStyle', 'CARD_STYLES'],
   ['defaultViewMode', 'VIEW_MODES'],
-  ['cardGroupView', 'CARD_GROUP_VIEWS']
+  ['cardGroupView', 'CARD_GROUP_VIEWS'],
+  ['costCurrency', 'COST_CURRENCIES']
 ];
 for (const [key, arrayName] of optionChecks) {
   const item = (theme.config || []).find((entry) => entry.key === key);

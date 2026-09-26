@@ -25,6 +25,8 @@
     // 新增：卡片上三网延迟的缓存（uuid → { at, rows }）与取数状态
     cardPing: new Map(),
     cardPingBusy: false,
+    // 新增：剩余价值卡片上一次重算的时刻（页面长时间开着时按 TTL 重算）
+    costCardAt: 0,
     settings: {},
     pollTimer: null,
     pollInterval: 3000,
@@ -53,7 +55,9 @@
     modalClose: document.getElementById('modal-close'),
     adminButton: document.querySelector('.btn-admin'),
     // 新增：分组筛选标签行（在 main 内、节点容器之上）
-    groupTabs: document.getElementById('group-tabs')
+    groupTabs: document.getElementById('group-tabs'),
+    // 新增：剩余价值卡片（同样在 main 内，标签行与节点容器之间）
+    costCard: document.getElementById('cost-card')
   };
 
   const PING_COLORS = ['#FF3333', '#00A896', '#9B5DE5', '#0066FF', '#F59E0B', '#EC4899', '#10B981', '#F97316'];
@@ -386,6 +390,12 @@
             traffic_limit_type: client.traffic_limit_type || 'max',
             virtualization: client.virtualization || '',
             kernel_version: client.kernel_version || '',
+            // 新增：剩余价值卡片用到的计费字段（由适配层从 Hub 的 /api/nodes 透传，见 monitor.js mapClient）
+            price: client.price || 0,
+            currency: client.currency || '',
+            billing_cycle: client.billing_cycle || '',
+            expires_at: client.expires_at || '',
+            expires_in: typeof client.expires_in === 'number' ? client.expires_in : null,
             // 移植差异：上游这里还抄了 client.gpu_name，GPU 型号极简探针不上报，已移除
             online: status ? status.online : false,
             cpu: status ? (status.cpu || 0) : 0,
@@ -438,6 +448,8 @@
       // 所以指标轮询只负责把已经拿到的延迟贴回去、以及检查有没有过期的卡片要取。
       applyCardPings();
       refreshCardPings();
+      // 新增：剩余价值卡片（自带 5 分钟节流，见 refreshCostCard）
+      refreshCostCard();
 
       if (state.activeNodeUuid) {
         updateModalLiveInfo();
@@ -895,6 +907,8 @@
     if (state.nodes.size === 0) {
       renderGroupTabs([]);
       state.groupSignature = '';
+      // 节点全没了（比如站点清空）：剩余价值卡片跟着收起，别留着上一次的数字
+      renderCostCard();
       elements.container.innerHTML = `
         <div class="empty-state">
           <h2>NO NODES</h2>
@@ -952,6 +966,8 @@
     // 新增：卡片重建后把三网延迟块贴回去（缓存里有就立刻复原，不会闪）
     applyCardPings();
     refreshCardPings();
+    // 新增：剩余价值卡片（节点价格/到期时间变了或设置改了，跟着这次渲染一起重算）
+    renderCostCard();
   }
 
   function updateAllCards() {
@@ -1666,6 +1682,184 @@
     }
   }
 
+  /* --------------------------------------------------------------------------
+     移植差异：剩余价值卡片（站点设置 showCostCard / costCurrency / costRates）
+     参照上游主题仓库的 custom-body/cost.html（那张 RESIDUAL VALUE 卡片），搬到极简探针字段上：
+       · 价格 / 货币 / 付款周期 / 到期时间 都是 Hub 节点自带字段，/api/nodes 匿名可见；
+       · 剩余天数**直接用 Hub 算好的 expires_in**（整数天，按 Hub 的日历算），不要拿访客的
+         Date 去减到期日——Hub 源码的注释里专门写了：Hub 在 UTC、访客在 UTC+8 时，按访客时钟算
+         会出现「每个周期里有一段时间把所有在线节点显示成已过期」；
+       · 每日成本 = price / 周期天数，剩余价值 = 每日成本 × 剩余天数；没填到期时间或已过期的
+         节点不计入（上游同口径）；付款周期用 Hub 面板那七档换算成天数（见 COST_CYCLE_DAYS），
+         其中「一次性」和将来 Hub 新加的档次都推不出每日成本，一律不计入合计（只算进 PAID
+         台数并在小字里点一下），不拿 30 天之类的默认值硬凑数字；
+       · 多货币按设置里的**固定汇率**折算成结算货币，不联网取实时汇率——主题其余部分也是全离线
+         （CDN 已本地化），墙内访客去请求外部汇率接口本来就会失败。缺汇率的货币不折算、不计入
+         合计，标签上标「?」并在控制台提示一次。
+     上游那张卡片的结构保持不变：标题 + 大数字 | 竖线 | 告警印章 / ALL CLEAR。
+     一台都没填价格时整块收起、不留空位。
+     -------------------------------------------------------------------------- */
+  // 付款周期 → 天数（与 Hub 面板的七档一一对应；天数口径写进 README，Hub 自己没有这张表）。
+  // 注意这里**不给默认值**：`once`（一次性）以及以后 Hub 新加的档次都推不出每日成本，
+  // 硬按 30 天算会凭空造出一个假数字，所以下面的循环直接跳过它们（只算进 PAID 台数）。
+  const COST_CYCLE_DAYS = {
+    monthly: 30,
+    quarterly: 90,
+    semiannual: 180,
+    yearly: 365,
+    biennial: 730,
+    triennial: 1095
+  };
+  const COST_WARN_DAYS = 7;        // 7 天内到期做成红色印章（上游同值）
+  const COST_CARD_TTL = 300000;    // 页面长时间开着时 5 分钟重算一次（这个数字是天级变化的）
+  const CURRENCY_SYMBOLS = { USD: '$', CNY: '¥', EUR: '€', GBP: '£', JPY: '¥' };
+
+  function costCardEnabled() {
+    return state.settings.showCostCard !== false;
+  }
+
+  function costBaseCurrency() {
+    const code = String(state.settings.costCurrency || 'CNY').trim().toUpperCase();
+    return CURRENCY_SYMBOLS[code] ? code : 'CNY';
+  }
+
+  // 汇率表：每行 `CODE=数字`，意思是 1 单位该货币 = 多少结算货币；结算货币自身恒为 1。
+  function costRates(base) {
+    const rates = {};
+    String(state.settings.costRates || '').split(/[\n,;；]+/).forEach(line => {
+      const matched = line.match(/^\s*([A-Za-z]{3})\s*[=:：]\s*([0-9]*\.?[0-9]+)\s*$/);
+      if (!matched) return;
+      const value = parseFloat(matched[2]);
+      if (isFinite(value) && value > 0) rates[matched[1].toUpperCase()] = value;
+    });
+    rates[base] = 1;
+    return rates;
+  }
+
+  // 与 Hub 面板的 money() 同一套写法（符号 + 两位小数），两边看起来才是一回事
+  function costMoney(amount, code) {
+    const symbol = CURRENCY_SYMBOLS[code] || '';
+    return `${symbol}${amount.toFixed(2)}${symbol ? '' : ' ' + code}`;
+  }
+
+  const costWarnedRates = new Set();
+  function warnMissingRate(code) {
+    if (costWarnedRates.has(code)) return;
+    costWarnedRates.add(code);
+    console.warn(`[Monitor Theme] 剩余价值卡片：汇率表里没有 ${code}，这部分未计入合计（主题设置 → 汇率表）`);
+  }
+
+  // 返回卡片的 innerHTML；没有任何计费信息时返回 null（调用方负责收起整块）
+  function costCardHTML() {
+    const base = costBaseCurrency();
+    const rates = costRates(base);
+    const subtotals = new Map();   // 货币 → 剩余价值小计
+    const missingRates = new Set();
+    const warn = [];               // 7 天内到期
+    const expired = [];
+    let total = 0;
+    let paid = 0;
+    let daysSum = 0;
+    let withExpiry = 0;
+    let notAmortized = 0;   // 有价格但付款周期推不出每日成本（如一次性）的台数
+
+    state.nodes.forEach(node => {
+      const price = Number(node.price);
+      if (!isFinite(price) || price <= 0) return;
+      paid += 1;
+      const code = String(node.currency || base).trim().toUpperCase() || base;
+      // 没填到期时间时 expires_in 是 null —— 注意 Number(null) === 0，会被当成「今天到期」
+      // 而多出一行 (0D) 告警，所以这里必须显式判空，不能只靠 isFinite。
+      if (node.expires_in === null || node.expires_in === undefined || node.expires_in === '') return;
+      const days = Number(node.expires_in);
+      if (!isFinite(days)) return;                    // 到期时间格式不认识：不计入剩余价值
+      withExpiry += 1;
+      if (days < 0) { expired.push({ name: node.name }); return; }
+      // 付款周期推不出每日成本（一次性 / Hub 以后新加的档次）：不计入合计，只记个数
+      const cycleDays = COST_CYCLE_DAYS[String(node.billing_cycle || '')];
+      if (!cycleDays) { notAmortized += 1; return; }
+      const residual = (price / cycleDays) * days;
+      subtotals.set(code, (subtotals.get(code) || 0) + residual);
+      daysSum += days;
+      if (days <= COST_WARN_DAYS) warn.push({ name: node.name, days });
+      if (code === base) total += residual;
+      else if (rates[code]) total += residual * rates[code];
+      else missingRates.add(code);
+    });
+
+    if (!paid) return null;   // 没有任何计费信息：整块不出现
+
+    const chips = [];
+    if (subtotals.size > 1) {
+      // 只有一种货币时小计就是总额，不重复摆一遍
+      [...subtotals.entries()].sort((a, b) => b[1] - a[1]).forEach(([code, amount]) => {
+        const unknownRate = code !== base && !rates[code];
+        const title = unknownRate
+          ? '汇率表里没有这个货币，未计入合计'
+          : `折合 ${costMoney(code === base ? amount : amount * rates[code], base)}`;
+        chips.push(
+          `<span class="cost-chip cost-chip-blue" title="${title}">${costMoney(amount, code)}${unknownRate ? ' ?' : ''}</span>`
+        );
+      });
+    }
+    warn.sort((a, b) => a.days - b.days).forEach(node => {
+      chips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (${node.days}D)</span>`);
+    });
+    expired.forEach(node => {
+      chips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (EXPIRED)</span>`);
+    });
+    if (!chips.length) {
+      chips.push(`<span class="cost-clear">${withExpiry ? 'ALL CLEAR ✓' : 'NO EXPIRY SET'}</span>`);
+    }
+
+    const usedRates = [...subtotals.keys()]
+      .filter(code => code !== base && rates[code])
+      .map(code => `${code} ${rates[code]}`);
+    const meta = [`${paid} PAID`];
+    if (withExpiry) meta.push(`${daysSum}D LEFT`);
+    if (usedRates.length) meta.push(`RATE ${usedRates.join(' / ')}`);
+    if (notAmortized) {
+      meta.push(
+        `<span title="付款周期推不出每日成本（一次性等），这些节点的金额没有算进合计">${notAmortized} SKIPPED</span>`
+      );
+    }
+
+    missingRates.forEach(warnMissingRate);
+
+    return `
+      <div class="cost-total">
+        <span class="cost-title">RESIDUAL VALUE</span>
+        <div class="cost-amount">${costMoney(total, base)}</div>
+      </div>
+      <div class="cost-divider"></div>
+      <div class="cost-chips">${chips.join('')}</div>
+      <div class="cost-meta">${meta.join(' · ')}</div>
+    `;
+  }
+
+  function renderCostCard() {
+    if (!elements.costCard) return;
+    const html = costCardEnabled() ? costCardHTML() : null;
+    // 整块收起时用 hidden（adapt.css 里有配套的 #cost-card[hidden] { display: none }）；
+    // 这里不写成局部别名（如 const card = elements.costCard）——check-adapt.mjs 靠
+    // elements.<键>.hidden 这个写法找 hidden 开关，写成别名会被整条漏检。
+    if (!html) {
+      elements.costCard.hidden = true;
+      elements.costCard.innerHTML = '';
+      return;
+    }
+    elements.costCard.innerHTML = html;
+    elements.costCard.hidden = false;
+  }
+
+  // 指标轮询里顺带刷新（5 分钟一次）：页面开着过夜时，剩余天数不会一直停在昨天
+  function refreshCostCard() {
+    const now = Date.now();
+    if (now - state.costCardAt < COST_CARD_TTL) return;
+    state.costCardAt = now;
+    renderCostCard();
+  }
+
   function percentile(values, p) {
     if (!values.length) return null;
     const sorted = values.slice().sort((a, b) => a - b);
@@ -1886,6 +2080,8 @@
       if (!document.hidden) {
         applyCardPings();
         refreshCardPings();
+        // 剩余价值：回到前台就重算一次（可能已经跨天，剩余天数该往下走了）
+        renderCostCard();
       }
     });
 
