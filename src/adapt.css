@@ -147,17 +147,22 @@ h1, h2, h3, h4, h5, h6,
 
 /* --------------------------------------------------------------------------
    移植差异：卡片上的三网延迟（站点设置 showNodePing，逻辑见 script.js 的 applyCardPings）
-   位置在指标区与底部栏之间，上下各一条分割线，与卡片自己的排版语言一致。
+   位置在指标区与底部栏之间。排版上刻意与卡片自己的语言对齐（实测过尺寸）：
+     · 延迟值用 .metric-value 的 0.85rem，右列数字才和上面的 CPU/内存/磁盘成一条竖线
+       （原来照抄 0.75rem，比指标值小一号，同一列里数字突然变矮）；
+     · 分割线 3px，与 .node-header 的下边线、.node-footer 的上边线同粗（原为 2px，
+       两条线挨着时粗细不一很显眼）；
+     · 上下留白 1.5rem / 1.5rem，与底栏上方的节奏相同（原来上 1rem、下 1.5rem 不均）。
    卡片整体可点（打开节点详情），这里不单独挂点击——点上去还是同一个动作，
    详情弹窗里的「延迟监控」就是它的放大版。
    -------------------------------------------------------------------------- */
 .node-ping {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  margin-top: 1rem;
-  padding-top: 0.85rem;
-  border-top: 2px solid var(--black);
+  gap: 0.4rem;
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  border-top: 3px solid var(--black);
 }
 
 .node-ping-row {
@@ -182,7 +187,14 @@ h1, h2, h3, h4, h5, h6,
   flex: none;
   font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
   font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;   /* 与 .metric-value 同号，右列数字对齐 */
   color: var(--black);
+}
+
+/* 标题下那行「系统 · CPU 型号」在窄卡片里会折成两行，上游的行高是 normal（约 1.15），
+   两行贴着像一块灰砖。给到 1.35 后它读起来才是一段说明文字，不会和标题、指标抢注意力。 */
+.node-info {
+  line-height: 1.35;
 }
 
 /* --------------------------------------------------------------------------
