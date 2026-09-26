@@ -32,12 +32,11 @@
   var DEFAULTS = {
     accentColor: 'yellow',
     cardStyle: 'thick',
-    showUptime: true,
     showLoginButton: true,
     dataUpdateInterval: 3,
     defaultViewMode: 'grid',
-    // 卡片视图要不要分段标题：tabs = 只有顶栏分组标签（默认），sections = 标签 + 分段标题。
-    // 列表视图不受它影响，始终按分组分段。
+    // 卡片视图怎么展示分组：tabs = 只有顶栏分组标签（默认），sections = 标签 + 分段标题，
+    // none = 分组标签整行不出现。列表视图不受它影响，始终是「标签 + 分段标题」。
     cardGroupView: 'tabs',
     // 新增：卡片上的三网延迟（探测线路的最新延迟，最多 3 条）
     showNodePing: true,
@@ -59,7 +58,7 @@
   var CARD_STYLES = ['thick', 'thin', 'double'];
   var VIEW_MODES = ['grid', 'list'];
   var COST_CURRENCIES = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'];
-  var CARD_GROUP_VIEWS = ['tabs', 'sections'];
+  var CARD_GROUP_VIEWS = ['tabs', 'sections', 'none'];
 
   // Hub 的历史窗口上限（见 src/api.rs 的 PUBLIC_HOURS / ADMIN_HOURS）
   var MAX_HOURS_PUBLIC = 168;
@@ -207,7 +206,7 @@
             else if (key === 'cardGroupView' && CARD_GROUP_VIEWS.indexOf(value) >= 0) merged[key] = value;
             else if (key === 'dataUpdateInterval' && typeof value === 'number' && isFinite(value)) {
               merged[key] = Math.min(60, Math.max(1, Math.round(value)));
-            } else if (key === 'showUptime' || key === 'showLoginButton' || key === 'showNodePing') {
+            } else if (key === 'showLoginButton' || key === 'showNodePing') {
               if (typeof value === 'boolean') merged[key] = value;
             } else if (key === 'cardPingLines') {
               // 只是个筛选条件（线路名清单），非字符串一律忽略；长度上限防呆，

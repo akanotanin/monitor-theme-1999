@@ -290,7 +290,6 @@
   function applySettings() {
     const accentColor = state.settings.accentColor || 'yellow';
     const cardStyle = state.settings.cardStyle || 'thick';
-    const showUptime = state.settings.showUptime !== false;
 
     document.documentElement.style.setProperty('--accent', `var(--accent-${accentColor})`);
 
@@ -301,11 +300,11 @@
       document.body.classList.add('card-style-double');
     }
 
-    // 移植差异：上游只为卡片底部的 .node-footer 提供开关，列表视图每行末尾的运行时间格
-    // （.row-uptime）不受影响。卡片那栏已拆掉（速度并入 NETWORK 区、运行时间不再上卡片），
-    // 所以这个设置现在只管列表视图，一并收进来是为了「默认列表视图 + 关闭运行时间」时也生效。
+    // 按要求（2026-09-26）：列表视图每行末尾的运行时间不再有开关，强制显示。
+    // 卡片上本来就没有运行时间（速度并入了 NETWORK 区），所以这里只需把上一版可能遗留的
+    // 内联 display:none 清掉——老站点存过「列表显示运行时间=关」时，那次设置不再有任何作用。
     document.querySelectorAll('.row-uptime').forEach(el => {
-      el.style.display = showUptime ? '' : 'none';
+      el.style.display = '';
     });
   }
 
@@ -859,6 +858,17 @@
     const tabs = elements.groupTabs;
     if (!tabs) return;
 
+    // 新增：卡片视图选了「不显示分组」（cardGroupView === 'none'）时，顶栏标签整行不出现。
+    // 同时把筛选清空：按钮都看不见了，留着一个访客既看不着也点不掉的筛选会让人以为节点丢了。
+    // 列表视图不受这个设置影响，切过去（setViewMode → render）标签照旧出现。
+    if (state.settings.cardGroupView === 'none' && state.viewMode === 'grid') {
+      state.groupFilter = null;
+      state.groupTabKeys = [];
+      elements.groupTabs.hidden = true;
+      tabs.innerHTML = '';
+      return;
+    }
+
     const { names, ungrouped } = collectGroups(nodes);
     const dangling = state.groupFilter !== null && state.groupFilter !== '' && !names.includes(state.groupFilter);
     const emptyNone = state.groupFilter === '' && ungrouped === 0;
@@ -961,7 +971,7 @@
     }
 
     // 移植差异：上游只在读到站点设置时调一次 applySettings()，而那时卡片还没渲染，
-    // 于是「显示运行时间」开关在首次打开时根本不生效（实测关闭后四个卡片底部仍是 flex）。
+    // 于是运行时间开关在首次打开时根本不生效（实测关闭后卡片底部仍是 flex）。
     // 每次渲染结束再应用一次，设置就与页面一致了。
     applySettings();
     // 新增：卡片重建后把三网延迟块贴回去（缓存里有就立刻复原，不会闪）

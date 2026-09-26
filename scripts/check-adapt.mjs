@@ -8,7 +8,9 @@
 //   5. 移植版自己插进页面的节点（分组标签、延迟块、NETWORK 区的速度…）必须有配套样式；
 //   6. 卡片排版依赖的上游类名（.net-totals / .net-total-item）必须还在；
 //   7. 卡片 NETWORK 区那一行的结构与顺序（含「底部栏不该再出现」）；
-//   8. .node-ping-value 与上游 .metric-value 的 font-size 必须一致（右列数字对齐）。
+//   8. .node-ping-value 与上游 .metric-value 的 font-size 必须一致（右列数字对齐）；
+//   9. 分组展示的第三种取值 none 必须真的被 script.js 处理，且「列表显示运行时间」这个
+//      开关不再出现在任何一处（按需求删除后不许悄悄回来）。
 import { existsSync, readFileSync } from 'node:fs';
 
 const styles = readFileSync('src/styles.css', 'utf8');
@@ -160,6 +162,32 @@ if (!metricFontSize || !pingFontSize) {
     `.node-ping-value 的 font-size（${pingFontSize}）与上游 .metric-value（${metricFontSize}）不一致：` +
       '延迟数字会比指标数字矮一截，同一列里对不齐'
   );
+}
+
+// 9. 站点可选值 / 已删开关的两条硬规矩。
+//    · cardGroupView 多了 none 这一档：适配层认识它、但 script.js 没处理的话，站长选了
+//      「不显示分组」页面毫无变化，而且不报错（本轮就是新增这个取值）。
+//    · 「列表显示运行时间」（showUptime）按要求删除、列表强制显示：它一旦被谁加回来，
+//      面板上会多出一个不该存在的开关。
+// 先剥掉 JS 注释再查：注释里写一句「cardGroupView === 'none'」的说明不算处理过——
+// 自测时这条护栏就被 script.js 自己的注释骗过（和 [hidden] 那条同类的坑）。
+// `[^:]` 是为了放过 http:// 这类字符串里的双斜杠。
+const stripJsComments = (text) =>
+  text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+const jsCode = stripJsComments(script);
+if (!jsCode.includes("cardGroupView === 'none'")) {
+  problems.push(
+    "script.js 里没有 cardGroupView === 'none' 的分支：后台选「不显示分组」时页面不会有任何变化"
+  );
+}
+for (const [label, source] of [
+  ['src/script.js', jsCode],
+  ['src/monitor.js', stripJsComments(readFileSync('src/monitor.js', 'utf8'))],
+  ['theme.json', readFileSync('theme.json', 'utf8')]
+]) {
+  if (source.includes('showUptime')) {
+    problems.push(`${label} 里又出现了 showUptime：这个开关已按要求删除，列表视图的运行时间强制显示`);
+  }
 }
 
 const iStyles = html.indexOf('href="styles.css"');
