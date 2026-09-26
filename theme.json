@@ -2,7 +2,7 @@
   "name": "Monitor 1999",
   "short": "1999",
   "description": "极简探针（Monitor）的新粗野主义风格主题：粗边框、硬阴影、像素化加载动画、卡片/列表双视图与节点详情历史图表。移植自 ricebucket/komari-theme-1999。",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-1999",
   "config": [
