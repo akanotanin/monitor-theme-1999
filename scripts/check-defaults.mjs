@@ -73,6 +73,7 @@ const optionChecks = [
   ['cardStyle', 'CARD_STYLES'],
   ['defaultViewMode', 'VIEW_MODES'],
   ['cardGroupView', 'CARD_GROUP_VIEWS'],
+  ['cardPingLayout', 'CARD_PING_LAYOUTS'],
   ['costCurrency', 'COST_CURRENCIES']
 ];
 for (const [key, arrayName] of optionChecks) {

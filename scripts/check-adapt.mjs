@@ -19,6 +19,14 @@ const html = readFileSync('src/index.html', 'utf8');
 
 const norm = (selector) => selector.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 
+// 从 monitor.js 里取一个 `var NAME = [...]` 数组字面量（只用在护栏自己要比对的白名单上）
+function extractArray(text, name) {
+  const start = text.indexOf(`var ${name} = [`);
+  if (start < 0) throw new Error(`在 src/monitor.js 里找不到 var ${name} = [`);
+  const end = text.indexOf('];', start);
+  return new Function(`return ${text.slice(start + `var ${name} = `.length, end + 1)}`)();
+}
+
 // 极简 CSS 规则扫描：取出「最内层规则」的选择器与声明块。
 // 够用就行——上游 CSS 没有嵌套规则，只有 @media 包一层。
 function* rules(cssText) {
@@ -196,6 +204,66 @@ for (const [label, source] of [
   if (source.includes('showUptime')) {
     problems.push(`${label} 里又出现了 showUptime：这个开关已按要求删除，列表视图的运行时间强制显示`);
   }
+}
+
+// 10. 卡片延迟的横排（站点设置 cardPingLayout = columns）。
+//     JS 拼给延迟块的类名、monitor.js 的取值白名单、adapt.css 的选择器，三处任何一处对不上
+//     都不会报错：只是站长选了「横排」页面照样竖排（或反过来说横排样式永远不生效）。
+//     所以按「白名单取值 → 类名 → adapt.css 里真有这条规则」串起来查。
+const pingLayoutPrefix = "'node-ping ping-layout-'";
+if (!jsCode.includes(pingLayoutPrefix)) {
+  problems.push(
+    `script.js 里找不到 ${pingLayoutPrefix} 这个类名前缀：卡片延迟块不再按 cardPingLayout 挂类名`
+  );
+}
+if (!/cardPingLayout/.test(jsCode)) {
+  problems.push('script.js 里没有读 cardPingLayout：这一档设置改了页面不会有任何变化');
+}
+const pingLayouts = extractArray(readFileSync('src/monitor.js', 'utf8'), 'CARD_PING_LAYOUTS');
+if (!pingLayouts.includes('columns')) {
+  problems.push('monitor.js 的 CARD_PING_LAYOUTS 里没有 columns：后台选了横排也会被适配层丢掉');
+}
+const columnsRule = [...rules(adapt)].find((rule) =>
+  rule.selectors.some((s) => s === '.node-ping.ping-layout-columns')
+);
+if (!columnsRule) {
+  problems.push(
+    '.node-ping.ping-layout-columns 在 adapt.css 里没有规则：卡片延迟的横排（columns）会静默退回竖排'
+  );
+} else if (!/flex-direction\s*:\s*row/.test(columnsRule.body)) {
+  problems.push('.node-ping.ping-layout-columns 的规则里没有 flex-direction: row：三列不会并排');
+}
+// 横排的两条视觉规矩（按要求加的）：每列内容居中 + 列间一条竖线隔开。
+// 它们失配时页面照常渲染，只是「居中/竖条」不见了，所以一样要写进护栏。
+const columnsRowRule = [...rules(adapt)].find((rule) =>
+  rule.selectors.some((s) => s === '.node-ping.ping-layout-columns .node-ping-row')
+);
+if (!columnsRowRule) {
+  problems.push('.node-ping.ping-layout-columns .node-ping-row 没有规则：横排的列没有自己的排版');
+} else if (!/text-align\s*:\s*center/.test(columnsRowRule.body)) {
+  problems.push(
+    '.node-ping.ping-layout-columns .node-ping-row 里没有 text-align: center：三列的文字不会各自居中'
+  );
+}
+const dividerRule = [...rules(adapt)].find((rule) =>
+  rule.selectors.some((s) => s === '.node-ping.ping-layout-columns .node-ping-row + .node-ping-row::before')
+);
+const dividerBody = dividerRule ? dividerRule.body.toLowerCase().replace(/\s+/g, '') : '';
+if (!dividerRule) {
+  problems.push(
+    '横排缺少列间竖条的规则（.node-ping-row + .node-ping-row::before）：三个数据之间不会再有竖线隔开'
+  );
+} else if (!dividerBody.includes('background:')) {
+  problems.push('列间竖条的规则里没有 background：竖线不会画出来');
+} else if (!dividerBody.includes('transform:translatex(-50%)')) {
+  problems.push(
+    '列间竖条的规则里没有 transform: translateX(-50%)：竖线会贴在右侧那一列上（两侧留白不对称）'
+  );
+}
+if (columnsRowRule && !columnsRowRule.body.toLowerCase().replace(/\s+/g, '').includes('position:relative')) {
+  problems.push(
+    '.node-ping.ping-layout-columns .node-ping-row 没有 position: relative：列间竖条会相对别的元素定位'
+  );
 }
 
 const iStyles = html.indexOf('href="styles.css"');

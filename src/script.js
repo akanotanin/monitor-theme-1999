@@ -1587,13 +1587,18 @@
   }
 
   // 缓存里的行 → 卡片上的延迟块。一行都没有时返回 null：宁可不插，也不留一个空框。
-  // 卡片底部那一块：每条探测线路一行 —— 线路名 | 最新延迟 | 丢包率。
-  // 三列都靠自己的类名定位，右侧两列固定宽度，所以数字在竖直方向成两列。
+  // 卡片底部那一块（站点设置 cardPingLayout 决定怎么排）：
+  //   rows    = 每条探测线路一行 —— 线路名 | 最新延迟 | 丢包率，多行竖着排；
+  //   columns = 三条线路并排成三列 —— 每条是「线路名在上、延迟与丢包率在下」，卡片更矮。
+  // 两种排布由 adapt.css 的 .ping-layout-* 承担，DOM 完全一样（span 各带自己的类名），
+  // 所以轮询原地更新（scrambleTextIfChanged）与切换设置都不需要重建结构。
   function buildCardPingBlock(uuid) {
     const cached = state.cardPing.get(uuid);
     if (!cached || !cached.rows.length) return null;
     const block = document.createElement('div');
-    block.className = 'node-ping';
+    // 站点设置 cardPingLayout：只认 'rows'（竖排），其余一律当 'columns'（横排）——
+    // 兜底值也是 columns，适配层已经把非法值过滤掉了（monitor.js 的 CARD_PING_LAYOUTS）。
+    block.className = 'node-ping ping-layout-' + (state.settings.cardPingLayout === 'rows' ? 'rows' : 'columns');
     cached.rows.forEach(row => {
       const item = document.createElement('div');
       item.className = 'node-ping-row';

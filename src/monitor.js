@@ -44,6 +44,9 @@
     // 留空 = 自动取有数据的前 3 条（CARD_PING_LINES）。名字对不上 Hub 的探测任务名
     // 就当作该节点没有这条线路，直接不显示（script.js 的 cardPingWanted）。
     cardPingLines: '',
+    // 卡片上的延迟怎么排：rows = 每条线路占一行（竖排，旧版的样子），
+    // columns = 三条线路并排成三列（横排，默认）。
+    cardPingLayout: 'columns',
     // 新增：成本汇总卡片（参照上游 custom-body/cost.html 的两张卡，移植版合成一张）
     showCostCard: true,          // 右栏 RESIDUAL VALUE（还剩多少没用掉）
     showCostMonthCard: true,     // 左栏 COST / MONTH（每月花多少）
@@ -59,6 +62,7 @@
   var VIEW_MODES = ['grid', 'list'];
   var COST_CURRENCIES = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'];
   var CARD_GROUP_VIEWS = ['tabs', 'sections', 'none'];
+  var CARD_PING_LAYOUTS = ['rows', 'columns'];
 
   // Hub 的历史窗口上限（见 src/api.rs 的 PUBLIC_HOURS / ADMIN_HOURS）
   var MAX_HOURS_PUBLIC = 168;
@@ -204,6 +208,7 @@
             else if (key === 'cardStyle' && CARD_STYLES.indexOf(value) >= 0) merged[key] = value;
             else if (key === 'defaultViewMode' && VIEW_MODES.indexOf(value) >= 0) merged[key] = value;
             else if (key === 'cardGroupView' && CARD_GROUP_VIEWS.indexOf(value) >= 0) merged[key] = value;
+            else if (key === 'cardPingLayout' && CARD_PING_LAYOUTS.indexOf(value) >= 0) merged[key] = value;
             else if (key === 'dataUpdateInterval' && typeof value === 'number' && isFinite(value)) {
               merged[key] = Math.min(60, Math.max(1, Math.round(value)));
             } else if (key === 'showLoginButton' || key === 'showNodePing') {

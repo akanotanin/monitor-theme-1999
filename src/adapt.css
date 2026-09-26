@@ -153,7 +153,8 @@ h1, h2, h3, h4, h5, h6,
        （原来照抄 0.75rem，比指标值小一号，同一列里数字突然变矮）；
      · 分割线 3px，与 .node-header 的下边线同粗（原为 2px，两条线挨着时粗细不一很显眼）；
      · 上留白 1.5rem 对齐卡片里其它分区的节奏；下留白由卡片自身的 padding 给。
-   三列：线路名（可省略号）| 最新延迟 | 丢包率。后两列固定宽度 + 右对齐，数字在竖直方向成两列；
+   三列：线路名（可省略号）| 最新延迟 | 丢包率。这说的是 rows（竖排）那一档；后两列固定宽度 + 右对齐，
+   数字在竖直方向成两列。默认的 columns（横排）档见下面 .ping-layout-columns 那段。
    丢包率与弹窗「延迟监控」同一口径（0.0% 常显，有丢包才变红，复用 .has-loss 语义）。
    卡片整体可点（打开节点详情），这里不单独挂点击——点上去还是同一个动作，
    详情弹窗里的「延迟监控」就是它的放大版。
@@ -209,6 +210,60 @@ h1, h2, h3, h4, h5, h6,
 
 .node-ping-loss.has-loss {
   color: var(--accent-red);
+}
+
+/* 站点设置 cardPingLayout = columns（默认）：三条线路并排成三列，每条是
+   「线路名 / 延迟 / 丢包率」三行。列宽用 flex:1 1 0 均分（三个数字块因此左对齐成三竖列），
+   gap 比竖排时更紧（0.4rem）——卡片实测只有 326px 宽，均分后每列约 88px，
+   延迟值与丢包率放在同一行会放不下（需要 ~92px），所以让它们各自占一行；
+   flex-wrap 仍留着：窄卡片上万一某一列装不下，丢包率会自己换行，不会溢出被裁。
+   按要求（2026-09-26）：每列内容各自居中，列与列之间用竖条隔开（表格感，与卡片其它分割线同一套粗野主义语言）。 */
+.node-ping.ping-layout-columns {
+  flex-direction: row;
+  /* stretch 让三列等高：竖条的高度才一致（某列多折一行时也不会参差） */
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.node-ping.ping-layout-columns .node-ping-row {
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;   /* 每列内容各自居中（横向由 align-items 定） */
+  text-align: center;    /* 文本本身居中（线路名、数值、丢包率） */
+  row-gap: 0.2rem;
+  padding: 0 0.25rem;
+  position: relative;    /* 列间竖条的定位基准 */
+}
+
+/* 列间竖条：3px（与卡片里其它分割线同粗），画在两列之间那 8px 空隙的正中——
+   left:-0.25rem 把它的左边定在空隙中线，再 translateX(-50%) 让它以中线为轴，
+   于是「上一列文字到竖线」与「竖线到下一列文字」的留白完全相等（padding 两边都是 0.25rem）；
+   上下各内缩 3px：比通高轻，也不会与上面的 3px 分割线连成一张网格。 */
+.node-ping.ping-layout-columns .node-ping-row + .node-ping-row::before {
+  content: '';
+  position: absolute;
+  left: -0.25rem;
+  transform: translateX(-50%);
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  background: var(--black);
+}
+
+/* 竖排时的 flex:1 1 auto 是让线路名吃掉整行剩下的宽度；变成列之后它会想撑满列高，
+   改成按内容宽（align-items: flex-start 决定横向宽度），max-width 兜住超长线路名的省略号 */
+.node-ping.ping-layout-columns .node-ping-name {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+/* 竖排时延迟/丢包靠固定 min-width + 右对齐成两条竖线；列里没有那两条竖线要对，
+   min-width 归零（否则 88px 的列会被 4.2rem 的下限撑出去），文本跟着整列居中 */
+.node-ping.ping-layout-columns .node-ping-value,
+.node-ping.ping-layout-columns .node-ping-loss {
+  min-width: 0;
+  text-align: center;
 }
 
 /* --------------------------------------------------------------------------
