@@ -80,6 +80,33 @@ for (const key of hiddenSwitched) {
   }
 }
 
+// 5. 移植版自己插进页面的节点，adapt.css 里必须有配套样式。
+//    JS 会照常把 DOM 插进去，CSS 一失配就静默退化成一排没有排版的文字（控制台不报错）。
+const patchedClasses = [
+  'group-tabs', 'group-tab', 'group-heading', 'group-heading-name', 'group-heading-count',
+  'node-ping', 'node-ping-row', 'node-ping-name', 'node-ping-value'
+];
+const adaptSelectors = [...rules(adapt)].flatMap((rule) => rule.selectors);
+const hasClass = (selectors, cls) =>
+  selectors.some((selector) => new RegExp(`\\.${cls}(?![\\w-])`).test(selector));
+for (const cls of patchedClasses) {
+  if (!hasClass(adaptSelectors, cls)) {
+    problems.push(`adapt.css 里没有 .${cls} 的规则：script.js 会插这块 DOM，缺样式会静默变成没排版的文字`);
+  }
+}
+
+// 6. script.js 依赖的上游结构锚点必须还在。
+//    卡片上的三网延迟按 .node-footer 定位并插在它前面；上游一旦改类名，
+//    这里不会报错，而是插到卡片末尾（位置全错），所以单独查一遍。
+const anchors = ['.node-footer'];
+const upstreamSelectors = [...rules(styles)].flatMap((rule) => rule.selectors);
+for (const anchor of anchors) {
+  const cls = anchor.slice(1);
+  if (!hasClass(upstreamSelectors, cls) && !hasClass(adaptSelectors, cls)) {
+    problems.push(`${anchor} 在 styles.css / adapt.css 里都不存在了：script.js 拿它定位，插错位置不会报错`);
+  }
+}
+
 const iStyles = html.indexOf('href="styles.css"');
 const iAdapt = html.indexOf('href="adapt.css"');
 if (iAdapt < 0) problems.push('index.html 没有引入 adapt.css');

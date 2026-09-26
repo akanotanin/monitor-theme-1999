@@ -38,7 +38,9 @@
     defaultViewMode: 'grid',
     // 卡片视图要不要分段标题：tabs = 只有顶栏分组标签（默认），sections = 标签 + 分段标题。
     // 列表视图不受它影响，始终按分组分段。
-    cardGroupView: 'tabs'
+    cardGroupView: 'tabs',
+    // 新增：卡片上的三网延迟（探测线路的最新延迟，最多 3 条）
+    showNodePing: true
   };
 
   var ACCENTS = ['yellow', 'red', 'blue', 'green', 'purple'];
@@ -184,7 +186,7 @@
             else if (key === 'cardGroupView' && CARD_GROUP_VIEWS.indexOf(value) >= 0) merged[key] = value;
             else if (key === 'dataUpdateInterval' && typeof value === 'number' && isFinite(value)) {
               merged[key] = Math.min(60, Math.max(1, Math.round(value)));
-            } else if (key === 'showUptime' || key === 'showLoginButton') {
+            } else if (key === 'showUptime' || key === 'showLoginButton' || key === 'showNodePing') {
               if (typeof value === 'boolean') merged[key] = value;
             }
           });

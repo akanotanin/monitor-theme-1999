@@ -146,6 +146,46 @@ h1, h2, h3, h4, h5, h6,
 }
 
 /* --------------------------------------------------------------------------
+   移植差异：卡片上的三网延迟（站点设置 showNodePing，逻辑见 script.js 的 applyCardPings）
+   位置在指标区与底部栏之间，上下各一条分割线，与卡片自己的排版语言一致。
+   卡片整体可点（打开节点详情），这里不单独挂点击——点上去还是同一个动作，
+   详情弹窗里的「延迟监控」就是它的放大版。
+   -------------------------------------------------------------------------- */
+.node-ping {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 2px solid var(--black);
+}
+
+.node-ping-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.node-ping-name {
+  min-width: 0;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-ping-value {
+  flex: none;
+  font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--black);
+}
+
+/* --------------------------------------------------------------------------
    部件状态：JS 用 hidden 属性开关的元素
    script.js 关闭「显示后台入口按钮」（showLoginButton=false）时，是给按钮加
    hidden 属性。但浏览器默认的 [hidden] { display: none } 来自 UA 样式表，

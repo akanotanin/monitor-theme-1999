@@ -22,6 +22,9 @@
     groupTabKeys: [],
     // 上一次渲染时的分组归属指纹（见 groupSignature / fetchNodesAndStatus）
     groupSignature: '',
+    // 新增：卡片上三网延迟的缓存（uuid → { at, rows }）与取数状态
+    cardPing: new Map(),
+    cardPingBusy: false,
     settings: {},
     pollTimer: null,
     pollInterval: 3000,
@@ -430,6 +433,11 @@
         updateAllCards();
       }
       updateStats();
+
+      // 新增：卡片上的三网延迟。取数自成一档（每张卡片 60 秒一次，见 refreshCardPings），
+      // 所以指标轮询只负责把已经拿到的延迟贴回去、以及检查有没有过期的卡片要取。
+      applyCardPings();
+      refreshCardPings();
 
       if (state.activeNodeUuid) {
         updateModalLiveInfo();
@@ -958,6 +966,9 @@
     // 于是「显示运行时间」开关在首次打开时根本不生效（实测关闭后四个卡片底部仍是 flex）。
     // 每次渲染结束再应用一次，设置就与页面一致了。
     applySettings();
+    // 新增：卡片重建后把三网延迟块贴回去（缓存里有就立刻复原，不会闪）
+    applyCardPings();
+    refreshCardPings();
   }
 
   function updateAllCards() {
@@ -1527,6 +1538,99 @@
     });
   }
 
+  // --- 卡片上的三网延迟（站点设置 showNodePing）----------------------------------
+  // 数据源与详情弹窗完全同一条：common:getRecords(type=ping) → Hub 的 series=ping，
+  // 所以卡片上的数字与点开卡片后「延迟监控」里第一条线路的最新值必然一致。
+  // 上游同类主题（Gongsc/Theme-Glassmorphism 的 NodeMultiPing）是每张卡片各取一次、
+  // 60 秒一轮、页面不可见时不取，这里沿用同样的口径，免得给 Hub 添无谓的请求。
+  const CARD_PING_LINES = 3;    // 三网：取 Hub 里排在最前的 3 条探测线路
+  const CARD_PING_TTL = 60000;  // 同一张卡片的延迟最多 60 秒取一次
+  const CARD_PING_CONCURRENCY = 3;
+
+  function cardPingEnabled() {
+    return state.settings.showNodePing !== false;
+  }
+
+  // 缓存里的行 → 卡片上的延迟块。一行都没有时返回 null：宁可不插，也不留一个空框。
+  function buildCardPingBlock(uuid) {
+    const cached = state.cardPing.get(uuid);
+    if (!cached || !cached.rows.length) return null;
+    const block = document.createElement('div');
+    block.className = 'node-ping';
+    cached.rows.forEach(row => {
+      const item = document.createElement('div');
+      item.className = 'node-ping-row';
+      const name = document.createElement('span');
+      name.className = 'node-ping-name';
+      // 线路名来自 Hub 后台，用 textContent 落进去（不拼 HTML）
+      name.textContent = row.name;
+      name.title = row.name;
+      const value = document.createElement('span');
+      value.className = 'node-ping-value';
+      value.textContent = formatPing(row.latest);
+      item.appendChild(name);
+      item.appendChild(value);
+      block.appendChild(item);
+    });
+    return block;
+  }
+
+  // 把缓存里的延迟块贴回卡片：render() 会重建卡片，这里负责复原；站点关掉该设置时负责摘掉。
+  function applyCardPings() {
+    state.cardPing.forEach((_, uuid) => {
+      if (!state.nodes.has(uuid)) state.cardPing.delete(uuid);
+    });
+    elements.container.querySelectorAll('.node-card').forEach(card => {
+      const existing = card.querySelector('.node-ping');
+      if (existing) existing.remove();
+      const block = cardPingEnabled() ? buildCardPingBlock(card.dataset.uuid) : null;
+      if (block) card.insertBefore(block, card.querySelector('.node-footer'));
+    });
+  }
+
+  // 哪些卡片的延迟该取：开着、网格视图、页面可见，且缓存已过期
+  function cardPingTargets() {
+    if (!cardPingEnabled() || state.viewMode !== 'grid' || document.hidden) return [];
+    const now = Date.now();
+    const targets = [];
+    elements.container.querySelectorAll('.node-card').forEach(card => {
+      const cached = state.cardPing.get(card.dataset.uuid);
+      if (!cached || now - cached.at >= CARD_PING_TTL) targets.push(card.dataset.uuid);
+    });
+    return targets;
+  }
+
+  // 同时最多 3 个请求：站点有几十个节点时也不会一开页就打一梭子出去。
+  async function refreshCardPings() {
+    if (state.cardPingBusy) return;
+    const queue = cardPingTargets();
+    if (!queue.length) return;
+    state.cardPingBusy = true;
+    try {
+      const worker = async () => {
+        while (queue.length) {
+          const uuid = queue.shift();
+          try {
+            const response = await rpcCall('common:getRecords', { uuid, type: 'ping', hours: 1 });
+            const stats = computeTaskStats(response?.records || [], response?.tasks || [], response?.loss || null);
+            state.cardPing.set(uuid, {
+              at: Date.now(),
+              // 只保留有采样的线路，顺序仍是 Hub 的任务顺序
+              rows: stats.filter(stat => stat.total > 0).slice(0, CARD_PING_LINES)
+            });
+          } catch (error) {
+            // 单张卡片取不到不影响其它卡片；不写缓存，下一轮再试
+            console.warn('[Monitor Theme] 卡片三网延迟取数失败：', uuid, error);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CARD_PING_CONCURRENCY, queue.length) }, worker));
+    } finally {
+      state.cardPingBusy = false;
+      applyCardPings();
+    }
+  }
+
   function percentile(values, p) {
     if (!values.length) return null;
     const sorted = values.slice().sort((a, b) => a - b);
@@ -1740,6 +1844,14 @@
       Object.values(state.charts).forEach(chart => {
         if (chart && typeof chart.resize === 'function' && !chart.isDisposed()) chart.resize();
       });
+    });
+
+    // 新增：标签页回到前台时补一次三网延迟（隐藏期间不取数，回来看见的就不会是几分钟前的数）
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        applyCardPings();
+        refreshCardPings();
+      }
     });
 
     // Header scroll hide/show - shows on any upscroll

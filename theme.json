@@ -45,6 +45,13 @@
     },
     {
       "type": "boolean",
+      "key": "showNodePing",
+      "label": "卡片显示三网延迟",
+      "default": true,
+      "help": "在节点卡片上显示探测线路的最新延迟（最多 3 条，线路名取自 Hub 后台的探测任务名，通常就是电信/联通/移动三网）。只影响卡片视图；关闭后访客页面不再请求延迟数据"
+    },
+    {
+      "type": "boolean",
       "key": "showLoginButton",
       "label": "显示后台入口按钮",
       "default": true,
