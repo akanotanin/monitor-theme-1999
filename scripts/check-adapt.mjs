@@ -1,9 +1,14 @@
 // 适配层护栏：上游 styles.css 一升级，adapt.css 里的补救就可能静默失配
 // （同类教训：hub 升级后 nginx 注入的选择器静默失效，界面上没人发现）。
-// 这里查三件事：
+// 这里查八件事：
 //   1. 上游所有声明了 Archivo Black 的选择器，adapt.css 的字体栈都得覆盖到；
 //   2. adapt.css 引用的本地字体文件必须真的在 vendor/fonts/ 里；
-//   3. index.html 里 adapt.css 必须排在 styles.css 之后（同优先级下顺序决定胜负）。
+//   3. index.html 里 adapt.css 必须排在 styles.css 之后（同优先级下顺序决定胜负）；
+//   4. JS 用 hidden 属性开关的元素，adapt.css 必须有配套的 [hidden] { display: none }；
+//   5. 移植版自己插进页面的节点（分组标签、延迟块、NETWORK 区的速度…）必须有配套样式；
+//   6. 卡片排版依赖的上游类名（.net-totals / .net-total-item）必须还在；
+//   7. 卡片 NETWORK 区那一行的结构与顺序（含「底部栏不该再出现」）；
+//   8. .node-ping-value 与上游 .metric-value 的 font-size 必须一致（右列数字对齐）。
 import { existsSync, readFileSync } from 'node:fs';
 
 const styles = readFileSync('src/styles.css', 'utf8');
@@ -84,7 +89,8 @@ for (const key of hiddenSwitched) {
 //    JS 会照常把 DOM 插进去，CSS 一失配就静默退化成一排没有排版的文字（控制台不报错）。
 const patchedClasses = [
   'group-tabs', 'group-tab', 'group-heading', 'group-heading-name', 'group-heading-count',
-  'node-ping', 'node-ping-row', 'node-ping-name', 'node-ping-value'
+  'node-ping', 'node-ping-row', 'node-ping-name', 'node-ping-value', 'node-ping-loss',
+  'net-rate', 'net-total-up', 'net-total-down'
 ];
 const adaptSelectors = [...rules(adapt)].flatMap((rule) => rule.selectors);
 const hasClass = (selectors, cls) =>
@@ -96,15 +102,58 @@ for (const cls of patchedClasses) {
 }
 
 // 6. script.js 依赖的上游结构锚点必须还在。
-//    卡片上的三网延迟按 .node-footer 定位并插在它前面；上游一旦改类名，
-//    这里不会报错，而是插到卡片末尾（位置全错），所以单独查一遍。
-const anchors = ['.node-footer'];
+//    移植版把上行/下行速度并进了 NETWORK 区那一行（.net-totals / .net-total-item），
+//    给两个合计加了 .net-total-up / .net-total-down 是为了脱离上游的 :first-child/:last-child
+//    取色（4 个子元素后那两个伪类不再指向绿/蓝）。上游一改这些类名不会报错，而是整行塌掉，
+//    所以这里按「上游样式表里必须还有」来查（不看 adapt.css，否则自己定义的规则会盖住这条）。
+const anchors = ['.net-totals', '.net-total-item'];
 const upstreamSelectors = [...rules(styles)].flatMap((rule) => rule.selectors);
 for (const anchor of anchors) {
   const cls = anchor.slice(1);
-  if (!hasClass(upstreamSelectors, cls) && !hasClass(adaptSelectors, cls)) {
-    problems.push(`${anchor} 在 styles.css / adapt.css 里都不存在了：script.js 拿它定位，插错位置不会报错`);
+  if (!hasClass(upstreamSelectors, cls)) {
+    problems.push(`${anchor} 在上游 styles.css 里不存在了：script.js 的 NETWORK 区排版挂在它上面`);
   }
+}
+
+// 7. 卡片 NETWORK 区那一行的结构（速度已从底部栏搬进来）。
+//    · 底部栏的标记不该再出现——半途回退会多出一栏空的 UP/DOWN SPEED；
+//    · 四个元素的**顺序**决定上下行速度对调与否（错误不会报错，只是数字反了）。
+const script = readFileSync('src/script.js', 'utf8');
+if (script.includes('class="node-footer"')) {
+  problems.push('script.js 的卡片模板里还有 class="node-footer"：速度已并入 NETWORK 区，底部栏应已移除');
+}
+const netRowStart = script.indexOf('class="net-totals"');
+if (netRowStart < 0) {
+  problems.push('script.js 里找不到 class="net-totals"：卡片 NETWORK 区的合计/速度行不见了');
+} else {
+  const rest = script.slice(netRowStart);
+  const netRow = rest.slice(0, rest.indexOf('</div>'));
+  const order = [...netRow.matchAll(/class="([^"]+)"/g)].map((m) => m[1]);
+  const expected = ['net-totals', 'net-total-item net-total-up', 'net-rate', 'net-total-item net-total-down', 'net-rate'];
+  if (JSON.stringify(order) !== JSON.stringify(expected)) {
+    problems.push(`卡片 NETWORK 区这一行的结构变了：\n    实际 ${JSON.stringify(order)}\n    期望 ${JSON.stringify(expected)}（合计·速率 上，合计·速率 下）`);
+  }
+}
+
+// 8. 「延迟值与指标值同号」是卡片排版改动的核心（同一列数字才成一条竖线）。
+//    直接比对两份 CSS 里声明的字号：任何一边被单独改动都会在这里失败。
+function fontSizeOf(cssText, selector) {
+  for (const rule of rules(cssText)) {
+    if (!rule.selectors.includes(selector)) continue;
+    const matched = rule.body.match(/font-size\s*:\s*([^;]+)/);
+    if (matched) return matched[1].trim();
+  }
+  return null;
+}
+const metricFontSize = fontSizeOf(styles, '.metric-value');
+const pingFontSize = fontSizeOf(adapt, '.node-ping-value');
+if (!metricFontSize || !pingFontSize) {
+  problems.push('取不到 .metric-value / .node-ping-value 的 font-size，两者的对齐关系无法核对');
+} else if (metricFontSize !== pingFontSize) {
+  problems.push(
+    `.node-ping-value 的 font-size（${pingFontSize}）与上游 .metric-value（${metricFontSize}）不一致：` +
+      '延迟数字会比指标数字矮一截，同一列里对不齐'
+  );
 }
 
 const iStyles = html.indexOf('href="styles.css"');

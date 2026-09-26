@@ -296,10 +296,10 @@
       document.body.classList.add('card-style-double');
     }
 
-    // 移植差异：上游只隐藏卡片视图底部的 .node-footer，列表视图的运行时间格
-    // （.row-uptime）不受该设置影响。两种视图共用同一项站点设置，这里一并收进来，
-    // 否则「默认列表视图 + 关闭运行时间」时设置看起来没生效。
-    document.querySelectorAll('.node-footer, .row-uptime').forEach(el => {
+    // 移植差异：上游只为卡片底部的 .node-footer 提供开关，列表视图每行末尾的运行时间格
+    // （.row-uptime）不受影响。卡片那栏已拆掉（速度并入 NETWORK 区、运行时间不再上卡片），
+    // 所以这个设置现在只管列表视图，一并收进来是为了「默认列表视图 + 关闭运行时间」时也生效。
+    document.querySelectorAll('.row-uptime').forEach(el => {
       el.style.display = showUptime ? '' : 'none';
     });
   }
@@ -462,11 +462,11 @@
     const netTypeLabel = getTrafficLimitLabel(node.traffic_limit_type || 'max');
     const { upPct, downPct, upDim, downDim, upHide, downHide, upLeft, downLeft, upZIndex, downZIndex } = getNetBarWidths(node);
     
-    // speed logic
-    const downSpeedText = isOnline ? `↓ ${formatNetworkSpeed(node.net_in || 0)}` : '↓ -';
-    const upSpeedText = isOnline ? `↑ ${formatNetworkSpeed(node.net_out || 0)}` : '↑ -';
-    
-    const uptimeText = isOnline ? formatUptime(node.uptime) : '-';
+    // 速度：移植差异——上行/下行速度不放卡片底部那一栏了，改成跟在 NETWORK 合计同一行，
+    // 所以这里只留数字（箭头已经在合计里），与列表视图 .row-speed-value 的写法一致。
+    const downSpeedText = isOnline ? formatNetworkSpeed(node.net_in || 0) : '-';
+    const upSpeedText = isOnline ? formatNetworkSpeed(node.net_out || 0) : '-';
+
     const upTotalText = `↑ ${formatBytes(node.net_total_up || 0)}`;
     const downTotalText = `↓ ${formatBytes(node.net_total_down || 0)}`;
 
@@ -526,23 +526,11 @@
             `}
           </div>
           <div class="net-totals">
-            <span class="net-total-item" data-prev="${upTotalText}">${upTotalText}</span>
-            <span class="net-total-item" data-prev="${downTotalText}">${downTotalText}</span>
+            <span class="net-total-item net-total-up" data-prev="${upTotalText}">${upTotalText}</span>
+            <span class="net-rate" data-prev="${upSpeedText}">${upSpeedText}</span>
+            <span class="net-total-item net-total-down" data-prev="${downTotalText}">${downTotalText}</span>
+            <span class="net-rate" data-prev="${downSpeedText}">${downSpeedText}</span>
           </div>
-        </div>
-      </div>
-      <div class="node-footer">
-        <div class="footer-stat">
-          <span data-prev="${upSpeedText}">${upSpeedText}</span>
-          UP SPEED
-        </div>
-        <div class="footer-stat">
-          <span data-prev="${downSpeedText}">${downSpeedText}</span>
-          DOWN SPEED
-        </div>
-        <div class="footer-stat">
-          <span data-prev="${uptimeText}">${uptimeText}</span>
-          UPTIME
         </div>
       </div>
     `;
@@ -649,17 +637,12 @@
       scrambleTextIfChanged(netTotals[1], `↓ ${formatBytes(node.net_total_down || 0)}`);
     }
 
-    const netUp = existingCard.querySelector('.footer-stat:nth-child(1) span');
-    const netDown = existingCard.querySelector('.footer-stat:nth-child(2) span');
-    const uptime = existingCard.querySelector('.footer-stat:nth-child(3) span');
-    
-    const newDownSpeedText = isOnline ? `↓ ${formatNetworkSpeed(node.net_in || 0)}` : '↓ -';
-    const newUpSpeedText = isOnline ? `↑ ${formatNetworkSpeed(node.net_out || 0)}` : '↑ -';
-    const newUptimeText = isOnline ? formatUptime(node.uptime) : '-';
-
-    if (netUp) scrambleTextIfChanged(netUp, newUpSpeedText);
-    if (netDown) scrambleTextIfChanged(netDown, newDownSpeedText);
-    if (uptime) scrambleTextIfChanged(uptime, newUptimeText);
+    // 上行/下行速度现在跟在 NETWORK 合计同一行（order 与卡片模板一致：先上后下）
+    const netRates = existingCard.querySelectorAll('.net-rate');
+    if (netRates.length === 2) {
+      scrambleTextIfChanged(netRates[0], isOnline ? formatNetworkSpeed(node.net_out || 0) : '-');
+      scrambleTextIfChanged(netRates[1], isOnline ? formatNetworkSpeed(node.net_in || 0) : '-');
+    }
   }
 
   function createNodeListItem(node) {
@@ -1552,6 +1535,8 @@
   }
 
   // 缓存里的行 → 卡片上的延迟块。一行都没有时返回 null：宁可不插，也不留一个空框。
+  // 卡片底部那一块：每条探测线路一行 —— 线路名 | 最新延迟 | 丢包率。
+  // 三列都靠自己的类名定位，右侧两列固定宽度，所以数字在竖直方向成两列。
   function buildCardPingBlock(uuid) {
     const cached = state.cardPing.get(uuid);
     if (!cached || !cached.rows.length) return null;
@@ -1568,14 +1553,23 @@
       const value = document.createElement('span');
       value.className = 'node-ping-value';
       value.textContent = formatPing(row.latest);
+      const loss = document.createElement('span');
+      loss.className = 'node-ping-loss';
+      const lossValue = Number.isFinite(row.loss) ? row.loss : 0;
+      // 有丢包才上色（复用弹窗 .latency-task-loss.has-loss 同一套语义）
+      if (lossValue > 0) loss.classList.add('has-loss');
+      loss.textContent = `${lossValue.toFixed(1)}%`;
+      loss.title = '丢包率';
       item.appendChild(name);
       item.appendChild(value);
+      item.appendChild(loss);
       block.appendChild(item);
     });
     return block;
   }
 
   // 把缓存里的延迟块贴回卡片：render() 会重建卡片，这里负责复原；站点关掉该设置时负责摘掉。
+  // 位置：卡片内容末尾（原来的底栏已拆掉，这块就是卡片底部那一段）。
   function applyCardPings() {
     state.cardPing.forEach((_, uuid) => {
       if (!state.nodes.has(uuid)) state.cardPing.delete(uuid);
@@ -1584,7 +1578,7 @@
       const existing = card.querySelector('.node-ping');
       if (existing) existing.remove();
       const block = cardPingEnabled() ? buildCardPingBlock(card.dataset.uuid) : null;
-      if (block) card.insertBefore(block, card.querySelector('.node-footer'));
+      if (block) card.appendChild(block);
     });
   }
 

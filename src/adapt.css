@@ -147,12 +147,14 @@ h1, h2, h3, h4, h5, h6,
 
 /* --------------------------------------------------------------------------
    移植差异：卡片上的三网延迟（站点设置 showNodePing，逻辑见 script.js 的 applyCardPings）
-   位置在指标区与底部栏之间。排版上刻意与卡片自己的语言对齐（实测过尺寸）：
+   位置：卡片内容末尾，NETWORK 区之后（原来的底部栏已拆掉，这一块就是卡片底部那一段）。
+   排版上刻意与卡片自己的语言对齐（实测过尺寸）：
      · 延迟值用 .metric-value 的 0.85rem，右列数字才和上面的 CPU/内存/磁盘成一条竖线
        （原来照抄 0.75rem，比指标值小一号，同一列里数字突然变矮）；
-     · 分割线 3px，与 .node-header 的下边线、.node-footer 的上边线同粗（原为 2px，
-       两条线挨着时粗细不一很显眼）；
-     · 上下留白 1.5rem / 1.5rem，与底栏上方的节奏相同（原来上 1rem、下 1.5rem 不均）。
+     · 分割线 3px，与 .node-header 的下边线同粗（原为 2px，两条线挨着时粗细不一很显眼）；
+     · 上留白 1.5rem 对齐卡片里其它分区的节奏；下留白由卡片自身的 padding 给。
+   三列：线路名（可省略号）| 最新延迟 | 丢包率。后两列固定宽度 + 右对齐，数字在竖直方向成两列；
+   丢包率与弹窗「延迟监控」同一口径（0.0% 常显，有丢包才变红，复用 .has-loss 语义）。
    卡片整体可点（打开节点详情），这里不单独挂点击——点上去还是同一个动作，
    详情弹窗里的「延迟监控」就是它的放大版。
    -------------------------------------------------------------------------- */
@@ -168,7 +170,8 @@ h1, h2, h3, h4, h5, h6,
 .node-ping-row {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  /* 不用 space-between：三列各自定位，右两列靠固定宽度对齐成两条竖线 */
+  justify-content: flex-start;
   gap: 0.75rem;
   font-size: 0.75rem;
   font-weight: 700;
@@ -176,6 +179,7 @@ h1, h2, h3, h4, h5, h6,
 }
 
 .node-ping-name {
+  flex: 1 1 auto;
   min-width: 0;
   color: var(--text-muted);
   overflow: hidden;
@@ -185,10 +189,61 @@ h1, h2, h3, h4, h5, h6,
 
 .node-ping-value {
   flex: none;
+  min-width: 4.2rem;
+  text-align: right;
   font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 0.85rem;   /* 与 .metric-value 同号，右列数字对齐 */
   color: var(--black);
+}
+
+.node-ping-loss {
+  flex: none;
+  min-width: 3.1rem;
+  text-align: right;
+  font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.node-ping-loss.has-loss {
+  color: var(--accent-red);
+}
+
+/* --------------------------------------------------------------------------
+   移植差异：上行/下行速度并入 NETWORK 区（原来在卡片底部那一栏，已拆掉）。
+   结构：合计(↑) · 速率 …… 合计(↓) · 速率 —— 左一组、右一组，用 margin-left:auto 分组。
+   合计与速率是各自独立的元素（不是嵌套），因为轮询更新走 scrambleTextIfChanged，
+   它会直接改 textContent —— 嵌在里面的 <b> 会在第一次刷新时被抹掉；
+   同理「·」分隔符只能用 ::before，不能写进 HTML。
+   颜色：合计沿用上游的绿/蓝语义；速率用黑色，让随轮询跳动的数字更醒目。
+   -------------------------------------------------------------------------- */
+.net-totals {
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 0.45rem;
+}
+
+.net-total-item.net-total-up {
+  color: var(--accent-green);
+}
+
+.net-total-item.net-total-down {
+  margin-left: auto;
+  color: var(--accent-blue);
+}
+
+.net-rate {
+  font-family: 'Space Grotesk', 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--black);
+}
+
+.net-rate::before {
+  content: '·';
+  margin-right: 0.35rem;
+  color: var(--text-muted);
 }
 
 /* 标题下那行「系统 · CPU 型号」在窄卡片里会折成两行，上游的行高是 normal（约 1.15），
