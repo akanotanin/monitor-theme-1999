@@ -73,6 +73,11 @@
   </header>
 
   <main class="main">
+    <!-- 新增：分组筛选标签（Hub 的节点 group 字段）。节点都没设分组时整行收起、不留空位，
+         标签本身由 script.js 的 renderGroupTabs() 生成。放在 main 内而不是页头里：
+         页头高度会被 JS 拿去算 main 的 padding-top，标签行会随分组数量换行，
+         塞进页头会让这块高度变得不可预测。 -->
+    <div class="group-tabs" id="group-tabs" role="group" aria-label="按分组筛选" hidden></div>
     <div class="nodes-container" id="nodes-container">
       <div class="loading" role="status" aria-label="Loading nodes">
         <div class="loading-panel">

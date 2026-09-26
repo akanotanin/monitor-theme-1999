@@ -61,6 +61,91 @@ h1, h2, h3, h4, h5, h6,
 }
 
 /* --------------------------------------------------------------------------
+   新增：分组（Hub 节点的 group 字段）
+   上游没有分组概念，这一块是新加的样式：main 内的分组筛选标签行 + 节点列表里的分段标题
+   （script.js 的 renderGroupTabs / createGroupHeading）。视觉沿用上游的新粗野主义：
+   3px 黑边、硬阴影、激活态用强调色 + 按下位移，与顶栏的 .btn-view / .btn-admin 同款。
+   -------------------------------------------------------------------------- */
+.group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+/* 与 .btn-admin 同理：作者样式里的 display 会压过浏览器的 [hidden]，
+   没有这一条时「没有分组就把标签行收起来」会静默失效（标签行照旧占着位置）。
+   scripts/check-adapt.mjs 会核对这条规则存在。 */
+#group-tabs[hidden] {
+  display: none;
+}
+
+.group-tab {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--black);
+  background: var(--card-bg);
+  border: 3px solid var(--black);
+  box-shadow: 3px 3px 0 var(--black);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.group-tab:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 var(--black);
+}
+
+.group-tab.active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+  background: var(--accent);
+}
+
+/* 分段标题：网格视图里横跨整行（与 .empty-state 同款做法），列表视图在下面单独摆 */
+.group-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 3px solid var(--black);
+}
+
+.group-heading-name {
+  font-family: 'Archivo Black', 'Monitor Display CJK', sans-serif;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  word-break: break-word;
+}
+
+.group-heading-count {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* 列表视图：标题带跟着 .node-row 一起横向滚动（行本身 min-width: 820px，见上游注释），
+   所以给它同样的 min-width；线只画在标题上方，下面那条留给紧随其后的行边框，
+   否则会叠成 4px 的双线。 */
+.nodes-container.list-view .group-heading {
+  min-width: 820px;
+  padding: 0.7rem 0.85rem 0.55rem;
+  border-bottom: 0;
+  border-top: 2px solid var(--black);
+  background: var(--card-bg);
+}
+
+.nodes-container.list-view .group-heading:first-child {
+  border-top: 0;
+}
+
+/* --------------------------------------------------------------------------
    部件状态：JS 用 hidden 属性开关的元素
    script.js 关闭「显示后台入口按钮」（showLoginButton=false）时，是给按钮加
    hidden 属性。但浏览器默认的 [hidden] { display: none } 来自 UA 样式表，

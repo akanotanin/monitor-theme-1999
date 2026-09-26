@@ -43,7 +43,8 @@ for (const key of Object.keys(declared)) {
 const optionChecks = [
   ['accentColor', 'ACCENTS'],
   ['cardStyle', 'CARD_STYLES'],
-  ['defaultViewMode', 'VIEW_MODES']
+  ['defaultViewMode', 'VIEW_MODES'],
+  ['cardGroupView', 'CARD_GROUP_VIEWS']
 ];
 for (const [key, arrayName] of optionChecks) {
   const item = (theme.config || []).find((entry) => entry.key === key);

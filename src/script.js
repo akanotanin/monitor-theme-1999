@@ -4,7 +4,10 @@
  *   1. 数据来源改走 window.Monitor1999（见 src/monitor.js）：rpcCall / 站点信息 / 历史记录；
  *   2. 移除登录弹窗与 OAuth（极简探针的登录在 /admin），顶栏按钮统一跳转后台；
  *   3. 移除极简探针不上报的能力：GPU 型号、连接数与进程数的历史曲线，
- *      以及匿名访客拿不到的 30 天窗口按钮。
+ *      以及匿名访客拿不到的 30 天窗口按钮；
+ *   4. 新增分组（原版没有用到 Komari 的 group 字段）：极简探针的节点带一个公开的
+ *      group 字段（后台可批量设置、最长 13 字、留空为未分组），这里据此加上
+ *      分组筛选标签与列表分段标题，见 renderGroupTabs / createGroupHeading。
  */
 (function() {
   'use strict';
@@ -13,6 +16,12 @@
     nodes: new Map(),
     // 移植差异：访客的视图偏好改用自己的键，避免与其它主题/原主题串味
     viewMode: localStorage.getItem('monitor1999ViewMode') || 'grid',
+    // 新增：分组筛选值（null = 全部，'' = 未分组，其它字符串 = 该分组名）。
+    // 不落 localStorage：访客下次打开仍从「全部」开始，免得看到一半节点以为站点坏了。
+    groupFilter: null,
+    groupTabKeys: [],
+    // 上一次渲染时的分组归属指纹（见 groupSignature / fetchNodesAndStatus）
+    groupSignature: '',
     settings: {},
     pollTimer: null,
     pollInterval: 3000,
@@ -39,7 +48,9 @@
     modal: document.getElementById('node-modal'),
     modalContent: document.getElementById('modal-content'),
     modalClose: document.getElementById('modal-close'),
-    adminButton: document.querySelector('.btn-admin')
+    adminButton: document.querySelector('.btn-admin'),
+    // 新增：分组筛选标签行（在 main 内、节点容器之上）
+    groupTabs: document.getElementById('group-tabs')
   };
 
   const PING_COLORS = ['#FF3333', '#00A896', '#9B5DE5', '#0066FF', '#F59E0B', '#EC4899', '#10B981', '#F97316'];
@@ -410,6 +421,11 @@
       if (state.isInitialRender) {
         render();
         state.isInitialRender = false;
+      } else if (groupSignature(Array.from(state.nodes.values()).sort((a, b) => a.weight - b.weight)) !== state.groupSignature) {
+        // 新增：分组归属变了（分组被改名/增删，或节点换了分组）就重绘一次。
+        // 轮询本身只调 updateAllCards()——它按 data-uuid 改数字，不会建卡也不会动
+        // 标签行与分段标题，于是站长改名后访客页面会一直停在上一次渲染的样子。
+        render();
       } else {
         updateAllCards();
       }
@@ -797,8 +813,97 @@
     if (upSpan) scrambleTextIfChanged(upSpan, isOnline ? formatUptime(node.uptime) : '-');
   }
 
+  // --- 新增：分组（Hub 的 group 字段）-----------------------------------------
+  // Hub 把分组定位成「标签页或分段标题」（见 monitor 的 api.rs: MAX_GROUP 注释），
+  // 这里两样都做：顶栏的标签负责筛选，节点列表里按分组加分段标题。
+  // 分组名是操作者在后台设的（最长 13 字、可含中文），公开页可见；空字符串是未分组。
+
+  // 筛选值：null = 全部，'' = 未分组，其它字符串 = 该分组名
+  function groupKeyOf(node) {
+    return (node.group || '').trim();
+  }
+
+  // 按传入顺序（调用方已按 weight 排好）收集分组名，未分组的只计数
+  function collectGroups(nodes) {
+    const names = [];
+    let ungrouped = 0;
+    nodes.forEach(node => {
+      const key = groupKeyOf(node);
+      if (!key) {
+        ungrouped++;
+        return;
+      }
+      if (!names.includes(key)) names.push(key);
+    });
+    return { names, ungrouped };
+  }
+
+  function createGroupHeading(title, count) {
+    const heading = document.createElement('div');
+    heading.className = 'group-heading';
+    heading.innerHTML = `
+      <span class="group-heading-name">${escapeHtml(title)}</span>
+      <span class="group-heading-count">${count}</span>
+    `;
+    return heading;
+  }
+
+  // 分组标签行。一个分组都没有（或节点全在未分组里）时整行收起，不留空位。
+  // 分组被改名/解散后落空的筛选回落到「全部」——与 Hub 面板里 useGroupFilter 的判定一致，
+  // 否则访客会停在一个什么都不显示的筛选上（面板那边同样选择回落而不是显示空列表）。
+  function renderGroupTabs(nodes) {
+    const tabs = elements.groupTabs;
+    if (!tabs) return;
+
+    const { names, ungrouped } = collectGroups(nodes);
+    const dangling = state.groupFilter !== null && state.groupFilter !== '' && !names.includes(state.groupFilter);
+    const emptyNone = state.groupFilter === '' && ungrouped === 0;
+    if (dangling || emptyNone) state.groupFilter = null;
+
+    if (names.length === 0) {
+      state.groupFilter = null;
+      state.groupTabKeys = [];
+      // 用 elements.groupTabs.hidden 这种写法（而不是局部别名）：check-adapt.mjs 靠
+      // 「elements.<键>.hidden =」扫出所有 hidden 开关，再核对 adapt.css 里有配套的
+      // [hidden] 规则；写成别名这一条就会漏检（自测时实测漏过）。
+      elements.groupTabs.hidden = true;
+      tabs.innerHTML = '';
+      return;
+    }
+
+    const entries = [{ key: null, label: '全部' }];
+    names.forEach(name => entries.push({ key: name, label: name }));
+    if (ungrouped > 0) entries.push({ key: '', label: '未分组' });
+
+    // 用下标当按钮的键：分组名最长 13 字，理论上可以是 "__all__" 这类字符串，
+    // 直接塞进 data-* 会和哨兵值撞车。
+    state.groupTabKeys = entries.map(entry => entry.key);
+    tabs.innerHTML = entries.map((entry, index) => {
+      const active = state.groupFilter === entry.key;
+      return `<button type="button" class="group-tab${active ? ' active' : ''}" data-group-index="${index}"${active ? ' aria-current="true"' : ''}>${escapeHtml(entry.label)}</button>`;
+    }).join('');
+    elements.groupTabs.hidden = false;
+
+    tabs.querySelectorAll('.group-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = state.groupTabKeys[Number(btn.dataset.groupIndex)];
+        if (key === undefined || key === state.groupFilter) return;
+        state.groupFilter = key;
+        render();
+      });
+    });
+  }
+
+  // 分组归属的指纹：轮询回来时用它判断要不要重绘（见 fetchNodesAndStatus）。
+  // 只含分组归属，不含指标数值——数值由 updateAllCards() 原地更新，不必重绘。
+  function groupSignature(nodes) {
+    return nodes.map(node => groupKeyOf(node)).join('\u0000');
+  }
+
   function render() {
     if (state.nodes.size === 0) {
+      renderGroupTabs([]);
+      state.groupSignature = '';
       elements.container.innerHTML = `
         <div class="empty-state">
           <h2>NO NODES</h2>
@@ -813,10 +918,41 @@
 
     const sortedNodes = Array.from(state.nodes.values()).sort((a, b) => a.weight - b.weight);
 
-    sortedNodes.forEach(node => {
-      const item = state.viewMode === 'list' ? createNodeListItem(node) : createNodeCard(node);
-      elements.container.appendChild(item);
-    });
+    // 新增：先把筛选值归一化（分组可能刚被改名/解散），再照它取要显示的节点
+    renderGroupTabs(sortedNodes);
+    state.groupSignature = groupSignature(sortedNodes);
+    const { names } = collectGroups(sortedNodes);
+    const filtered = state.groupFilter === null
+      ? sortedNodes
+      : sortedNodes.filter(node => groupKeyOf(node) === state.groupFilter);
+
+    const appendNode = (node) => {
+      elements.container.appendChild(
+        state.viewMode === 'list' ? createNodeListItem(node) : createNodeCard(node)
+      );
+    };
+
+    // 新增：有分组就按分组分段。列表视图固定分段；卡片视图由站点设置决定
+    // （cardGroupView：默认 'tabs' 只留顶栏标签，'sections' 才加分段标题）。
+    // 筛到某一个分组时标签已经写明了范围，不再重复一个标题。
+    const sections = names.length > 0
+      && state.groupFilter === null
+      && (state.viewMode === 'list' || state.settings.cardGroupView === 'sections');
+    if (sections) {
+      names.forEach(name => {
+        const members = filtered.filter(node => groupKeyOf(node) === name);
+        elements.container.appendChild(createGroupHeading(name, members.length));
+        members.forEach(appendNode);
+      });
+      // 未分组排在最后：它不是一个真的分组，放末尾不会把已分组的部分切开
+      const rest = filtered.filter(node => !groupKeyOf(node));
+      if (rest.length) {
+        elements.container.appendChild(createGroupHeading('未分组', rest.length));
+        rest.forEach(appendNode);
+      }
+    } else {
+      filtered.forEach(appendNode);
+    }
 
     // 移植差异：上游只在读到站点设置时调一次 applySettings()，而那时卡片还没渲染，
     // 于是「显示运行时间」开关在首次打开时根本不生效（实测关闭后四个卡片底部仍是 flex）。
