@@ -69,12 +69,16 @@ const MAIN = [
   // 两张汇率表里都没有的币种：唯一会走到「未计入 …」那行的情况
   node(20, { name: '测试币种机', country: 'US', price: 100, currency: 'XYZ', billing_cycle: 'yearly', expires_in: 100 })
 ];
-// 带分组的夹具：验证「汇总卡片 → 分组标签 → 节点列表」这个顺序在页面上真的成立
-const GROUPS = [
-  node(40, { name: '东京一号', country: 'JP', price: 120, currency: 'HKD', billing_cycle: 'monthly', expires_in: 100, group: '东京' }),
-  node(41, { name: '法兰克福一号', country: 'DE', price: 299, currency: 'CNY', billing_cycle: 'yearly', expires_in: 300, group: '欧洲' }),
-  node(42, { name: '没有分组的机器', country: 'US', price: 20, currency: 'USD', billing_cycle: 'yearly', expires_in: 200, group: '' })
-];
+// 带分组的夹具：验证「汇总卡片 → 分组标签 → 节点列表」这个顺序在页面上真的成立，
+// 以及**切分组后页头统计与成本卡片跟着该分组重算**（第 ④ 组断言）。
+// 东京组两台：一台普通、一台 3 天内到期且 CPU 特别高 —— 于是「平均 CPU」「到期印章」
+// 在「全部」与「东京」两档下必然不同，统计到底有没有按分组算一眼可判。
+const G_TOKYO_1 = node(40, { name: '东京一号', country: 'JP', price: 120, currency: 'HKD', billing_cycle: 'monthly', expires_in: 100, group: '东京' });
+const G_TOKYO_2 = node(43, { name: '东京二号', country: 'JP', price: 60, currency: 'CNY', billing_cycle: 'monthly', expires_in: 3, group: '东京' });
+G_TOKYO_2.metrics.cpu = 60;
+const G_EUROPE = node(41, { name: '法兰克福一号', country: 'DE', price: 299, currency: 'CNY', billing_cycle: 'yearly', expires_in: 300, group: '欧洲' });
+const G_UNGROUPED = node(42, { name: '没有分组的机器', country: 'US', price: 20, currency: 'USD', billing_cycle: 'yearly', expires_in: 200, group: '' });
+const GROUPS = [G_TOKYO_1, G_TOKYO_2, G_EUROPE, G_UNGROUPED];
 const B = MAIN[1];
 const D = MAIN[12];
 const A = MAIN[2];
@@ -86,7 +90,7 @@ const SCENARIOS = [
   { key: 'only-resid', nodes: [A, B, D], cfg: { showCostMonthCard: false }, want: { blocks: 1, notes: 0, reds: 1, divider: false } },
   { key: 'no-alerts', nodes: [B, D], cfg: {}, want: { blocks: 2, notes: 0, reds: 0, clear: 'ALL CLEAR ✓', divider: true } },
   { key: 'all-rated', nodes: [B, D, node(30, { name: '首尔', country: 'KR', price: 32.16, currency: 'USD', billing_cycle: 'semiannual', expires_in: 45 })], cfg: {}, want: { blocks: 2, notes: 0, reds: 0, clear: 'ALL CLEAR ✓', divider: true } },
-  { key: 'with-groups', nodes: GROUPS, cfg: {}, want: { blocks: 2, notes: 0, reds: 0, divider: true, tabs: true } },
+  { key: 'with-groups', nodes: GROUPS, cfg: {}, want: { blocks: 2, notes: 0, reds: 1, divider: true, tabs: true } },
   { key: 'user-override', nodes: MAIN, cfg: { costRates: 'HKD=1' }, want: { blocks: 2, notes: 2, reds: 7, divider: true, month: '¥1007.68', hkdStar: false } },
   { key: 'no-price', nodes: [E], cfg: {}, want: { hidden: true } },
   { key: 'no-expiry', nodes: [node(21, { name: '无到期机', price: 20, currency: 'USD', billing_cycle: 'yearly', expires_in: null })], cfg: {}, want: { blocks: 2, notes: 0, reds: 0, clear: 'NO EXPIRY SET', divider: true } }
@@ -185,6 +189,15 @@ const PROBE = `(() => {
     tabsVisible: (() => { const t = document.querySelector('#group-tabs'); return !!t && getComputedStyle(t).display !== 'none' && t.getBoundingClientRect().height > 0; })(),
     tabsBox: (() => { const t = document.querySelector('#group-tabs'); if (!t || t.hidden || getComputedStyle(t).display === 'none') return null; const r = t.getBoundingClientRect(); return { y: Math.round(r.y), bottom: Math.round(r.bottom), h: Math.round(r.height) }; })(),
     mainOrder: [...document.querySelector('.main').children].map((el) => el.id || el.className),
+    // 页头那排统计 + 卡片数 + 分组标签：第 ④ 组（切分组）断言用
+    stats: {
+      nodes: txt(document.getElementById('stat-nodes')), online: txt(document.getElementById('stat-online')),
+      cpu: txt(document.getElementById('stat-cpu')), ram: txt(document.getElementById('stat-ram')),
+      down: txt(document.getElementById('stat-net-in')), up: txt(document.getElementById('stat-net-out'))
+    },
+    cardCount: document.querySelectorAll('.node-card').length,
+    tabLabels: [...document.querySelectorAll('.group-tab')].map((b) => b.textContent.trim()),
+    activeTab: (() => { const a = document.querySelector('.group-tab.active'); return a ? a.textContent.trim() : null; })(),
     costBottom: card ? Math.round(card.getBoundingClientRect().bottom) : null,
     firstCardTop: (() => { const c = document.querySelector('.node-card'); return c ? Math.round(c.getBoundingClientRect().top) : null; })(),
     names
@@ -354,6 +367,84 @@ ck('备注', '窄屏小卡片不越过内容区右边缘', phoneModal.chipOverfl
 ck('备注', '窄屏整页没有横向溢出', phoneModal.viewport.docScrollW <= 390, phoneModal.viewport);
 // 用 (x || {}).h 兜底：备注块整个不见了时这里要报 FAIL，而不是把护栏自己搞崩
 ck('备注', '窄屏会换行（4 枚放不下 → 块变高）', ((phoneModal.blockBox || {}).h || 0) > ((bothModal.blockBox || {}).h || 0), [phoneModal.blockBox, bothModal.blockBox]);
+
+/* ④ 切分组：页头那排统计与成本卡片跟着当前分组重算 -----------------------------
+   口径来自参考站（monitor 内置 default 主题）：它的概览四格就是拿**筛选后的节点**算的
+   （`let c = group===null ? nodes : nodes.filter(...)` → `<Summary nodes={c}/>`）。
+   本站的等价物是页头 stats-bar 与成本卡片。判据不用硬编码金额：拿「只放该分组的节点」
+   的场景当对照，两者必须逐字相同（算法以后改了也不会假红）。 */
+
+// 点某个分组标签，等翻牌动画（400ms）落定再读数：只等固定毫秒会取到乱码，
+// 所以判据是「两次读数相同 + 形状合法（数字/百分比/速率/货币各自过一遍字符白名单）」。
+// ★这个窗口（0.7s + 0.25s）**故意远短于轮询间隔**（站点设置的刷新间隔，最少 1s、夹具用 3s）：
+//   判的就是「点完立刻就得跟上」，等下一轮 HTTP 轮询才更新是不合格的——那段时间页头写着旧数字。
+//   所以别把等待时间放宽，否则这条护栏会退化成「反正轮询会追上」的假绿。
+async function clickTab(label) {
+  const clicked = await evaluate(`(() => { const b = [...document.querySelectorAll('.group-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!b) return 'missing'; b.click(); return 'ok'; })()`);
+  // 找不到标签也回一份探针：让断言自己报 FAIL，而不是把护栏整轮带走
+  if (clicked !== 'ok') return Object.assign(await evaluate(PROBE), { clicked });
+  await sleep(700);
+  const SETTLE = `(() => {
+    // 页头那两格速率是「数值 + 换行 + 单位」（script.js 里把空格换成了换行），先拍平再判形状
+    const plain = (t) => t.split(String.fromCharCode(10)).join(' ');
+    const digits = '0123456789.';
+    const g = (id) => plain((document.getElementById(id) || {}).textContent || '');
+    const onlyDigits = (t) => t.length > 0 && [...t].every((c) => digits.indexOf(c) >= 0);
+    const pct = (t) => t.length > 1 && t[t.length - 1] === '%' && onlyDigits(t.slice(0, -1));
+    const speed = (t) => t.indexOf('B/s') > 0 && [...t].every((c) => digits.indexOf(c) >= 0 || 'KMG Bs/'.indexOf(c) >= 0);
+    const money = (t) => t.length > 3 && '¥$€£'.indexOf(t[0]) >= 0 && onlyDigits(t.slice(1));
+    const amounts = [...document.querySelectorAll('#cost-card .cost-amount')].map((e) => e.textContent.trim());
+    const ok = onlyDigits(g('stat-nodes')) && onlyDigits(g('stat-online')) && pct(g('stat-cpu')) && pct(g('stat-ram'))
+      && speed(g('stat-net-in')) && speed(g('stat-net-out')) && amounts.length > 0 && amounts.every(money);
+    return { ok: ok, key: [g('stat-nodes'), g('stat-online'), g('stat-cpu'), g('stat-ram'), g('stat-net-in'), g('stat-net-out'), amounts.join(',')].join('|') };
+  })()`;
+  let prev = null;
+  for (let i = 0; i < 30; i++) {
+    const now = await evaluate(SETTLE);
+    if (now.ok && prev && prev.key === now.key) break;
+    prev = now;
+    await sleep(250);
+  }
+  return Object.assign(await evaluate(PROBE), { clicked: 'ok' });
+}
+
+// 全部档先点一轮（对照场景要重新导航，点标签必须在「全部」那一页上做）
+const gAll = await load({ key: 'groups-all', nodes: GROUPS, cfg: {} }, 1440, 900, false);
+const gTokyo = await clickTab('东京');
+const gEurope = await clickTab('欧洲');
+const gUngrouped = await clickTab('未分组');
+const gBack = await clickTab('全部');
+// 对照场景：只放该分组的节点，页头统计与成本卡片的期望值由主题自己算出来（等价断言）
+const soloTokyo = await load({ key: 'solo-tokyo', nodes: [G_TOKYO_1, G_TOKYO_2], cfg: {} }, 1440, 900, false);
+const soloEurope = await load({ key: 'solo-europe', nodes: [G_EUROPE], cfg: {} }, 1440, 900, false);
+const soloNone = await load({ key: 'solo-none', nodes: [G_UNGROUPED], cfg: {} }, 1440, 900, false);
+
+ck('分组', '「全部」档页头统计 = 全部 4 台', gAll.stats.nodes === '4' && gAll.stats.online === '4' && gAll.cardCount === 4, [gAll.stats, gAll.cardCount]);
+ck('分组', '「全部」档平均 CPU = 四台的平均（24%）', gAll.stats.cpu === '24%', gAll.stats.cpu);
+ck('分组', '分组标签是 全部 / 东京 / 欧洲 / 未分组', JSON.stringify(gAll.tabLabels) === JSON.stringify(['全部', '东京', '欧洲', '未分组']) && gAll.activeTab === '全部', [gAll.tabLabels, gAll.activeTab]);
+ck('分组', '四个分组标签都点得到（点不动就谈不上跟随）', [gTokyo, gEurope, gUngrouped, gBack].every((p) => p.clicked === 'ok'), [gTokyo.clicked, gEurope.clicked, gUngrouped.clicked, gBack.clicked]);
+
+ck('分组', '点「东京」后页头 NODES / ONLINE 变成该分组（2 台）、列表只剩 2 张', gTokyo.stats.nodes === '2' && gTokyo.stats.online === '2' && gTokyo.cardCount === 2, [gTokyo.stats, gTokyo.cardCount]);
+ck('分组', '点「东京」后平均 CPU 只算该分组（36%，不是全站的 24%）', gTokyo.stats.cpu === '36%', gTokyo.stats.cpu);
+ck('分组', '点「东京」后页头下行速率 = 该分组两台之和（与「只放这两台」的站点一致）', gTokyo.stats.down === soloTokyo.stats.down && gTokyo.stats.down !== gAll.stats.down, [gTokyo.stats.down, soloTokyo.stats.down, gAll.stats.down]);
+ck('分组', '点「东京」后成本卡片两栏都只算该分组（与「只放这两台」的站点逐字相同）', JSON.stringify(gTokyo.amounts) === JSON.stringify(soloTokyo.amounts), [gTokyo.amounts, soloTokyo.amounts]);
+ck('分组', '成本卡片确实跟着变了（不是原地不动）', gTokyo.amounts.join() !== gAll.amounts.join(), [gAll.amounts, gTokyo.amounts]);
+ck('分组', '点「东京」后到期印章仍只列该分组那台（TODAY/ND/EXPIRED 里的一枚）', gTokyo.reds.length === 1 && /东京二号/.test(gTokyo.reds[0]), gTokyo.reds);
+
+ck('分组', '点「欧洲」后只剩 1 台（可点掉的那两个标签里最远的一档）', gEurope.stats.nodes === '1' && gEurope.cardCount === 1, [gEurope.stats.nodes, gEurope.cardCount]);
+ck('分组', '点「欧洲」后成本卡片 = 只放这一台的站点', JSON.stringify(gEurope.amounts) === JSON.stringify(soloEurope.amounts), [gEurope.amounts, soloEurope.amounts]);
+ck('分组', '点「欧洲」后到期印章清空（东京那台 3 天内到期的印章不该还在）', gEurope.reds.length === 0 && gEurope.clear === 'ALL CLEAR ✓', [gEurope.reds, gEurope.clear]);
+
+ck('分组', '点「未分组」后统计与成本卡片 = 只放未分组那一台的站点', gUngrouped.stats.nodes === '1' && JSON.stringify(gUngrouped.amounts) === JSON.stringify(soloNone.amounts), [gUngrouped.stats.nodes, gUngrouped.amounts, soloNone.amounts]);
+
+ck('分组', '点回「全部」后统计与成本卡片逐字复原', gBack.stats.nodes === '4' && gBack.stats.cpu === gAll.stats.cpu && JSON.stringify(gBack.amounts) === JSON.stringify(gAll.amounts), [gBack.stats, gBack.amounts, gAll.amounts]);
+ck('分组', '成本卡片仍在分组标签上面（位置按站长口径不动）', JSON.stringify(gBack.mainOrder) === JSON.stringify(['cost-card', 'group-tabs', 'nodes-container']), gBack.mainOrder);
+
+// 窄屏：切分组后成本卡片不能撑破（手机上这张卡最容易失控）
+const phoneGroups = await load({ key: 'groups-phone', nodes: GROUPS, cfg: {} }, 390, 844, true);
+const phoneTokyo = await clickTab('东京');
+ck('分组', '窄屏切分组后统计同样跟着走', phoneTokyo.stats.nodes === '2', phoneTokyo.stats.nodes);
+ck('分组', '窄屏切分组后成本卡片仍在 420px 内、无横向溢出', phoneTokyo.cardBox.h <= 420 && phoneTokyo.viewport.docScrollW <= 390, [phoneTokyo.cardBox, phoneTokyo.viewport]);
 
 const failed = checks.filter((c) => !c.ok);
 for (const c of checks) console.log(`${c.ok ? 'PASS' : 'FAIL'}  [${c.scope}] ${c.label}${c.ok ? '' : '  →  ' + JSON.stringify(c.detail)}`);

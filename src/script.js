@@ -922,12 +922,24 @@
     return nodes.map(node => groupKeyOf(node)).join('\u0000');
   }
 
+  // 当前分组筛选出的节点（null = 全部）。**页头那排统计、成本卡片与节点列表都走它**：
+  // 切分组时三者口径一致——参考站（monitor 内置 default 主题）的概览四格也是拿筛选后的
+  // 节点算的；只让列表变、汇总量不动，会出现「页头写着 8 台、下面只有 3 张卡」这种页面。
+  // 分组标签整行收起时（cardGroupView === 'none'）筛选会被清成 null，于是自然回到全站口径。
+  function filteredNodes(nodes) {
+    return state.groupFilter === null
+      ? nodes
+      : nodes.filter(node => groupKeyOf(node) === state.groupFilter);
+  }
+
   function render() {
     if (state.nodes.size === 0) {
       renderGroupTabs([]);
       state.groupSignature = '';
-      // 节点全没了（比如站点清空）：剩余价值卡片跟着收起，别留着上一次的数字
+      // 节点全没了（比如站点清空）：剩余价值卡片跟着收起，别留着上一次的数字；
+      // 页头那排统计也归零，否则会停在清空前的数字上。
       renderCostCards();
+      updateStats();
       elements.container.innerHTML = `
         <div class="empty-state">
           <h2>NO NODES</h2>
@@ -946,9 +958,7 @@
     renderGroupTabs(sortedNodes);
     state.groupSignature = groupSignature(sortedNodes);
     const { names } = collectGroups(sortedNodes);
-    const filtered = state.groupFilter === null
-      ? sortedNodes
-      : sortedNodes.filter(node => groupKeyOf(node) === state.groupFilter);
+    const filtered = filteredNodes(sortedNodes);
 
     const appendNode = (node) => {
       elements.container.appendChild(
@@ -985,8 +995,11 @@
     // 新增：卡片重建后把三网延迟块贴回去（缓存里有就立刻复原，不会闪）
     applyCardPings();
     refreshCardPings();
-    // 新增：剩余价值卡片（节点价格/到期时间变了或设置改了，跟着这次渲染一起重算）
+    // 新增：剩余价值卡片（节点价格/到期时间变了、设置改了、或切了分组，跟着这次渲染一起重算）
     renderCostCards();
+    // 新增：页头那排统计与成本卡片同口径——分组标签的点击走的就是 render()，
+    // 统计不在这里重算的话，切分组后「NODES / AVG CPU / 上下行」会一直停在全站数字上。
+    updateStats();
   }
 
   function updateAllCards() {
@@ -1010,7 +1023,9 @@
     let totalNetIn = 0;
     let totalNetOut = 0;
 
-    state.nodes.forEach(node => {
+    // 新增：与列表同口径——按当前分组筛选后再汇总（「全部」时就是全站）。
+    const visible = filteredNodes(Array.from(state.nodes.values()));
+    visible.forEach(node => {
       if (node.online !== false) {
         onlineCount++;
         totalCpu += node.cpu || 0;
@@ -1023,7 +1038,7 @@
       }
     });
 
-    const nodeCount = state.nodes.size;
+    const nodeCount = visible.length;
     const avgCpu = nodeCount > 0 ? (totalCpu / nodeCount) : 0;
     const avgRam = ramCount > 0 ? (totalRam / ramCount) : 0;
     const netInText = (totalNetIn > 0 ? formatNetworkSpeed(totalNetIn) : '0 B/s').replace(' ', '\n');
@@ -1765,9 +1780,13 @@
          小框说明——大数字本身不含这部分钱，不写出来就是把合计说多了；
          「0.00 的标签」不再生成（到期当天 (price/周期)×0 会造出一个没有信息量的 0 小计）；
        · 到期的机器做成红色印章：`! 名字 (TODAY / 5D / EXPIRED)`。
+       · **口径跟着分组走**：算的是**当前分组筛选出的节点**（「全部」时 = 全站），与页头那排
+         统计、下面的节点列表是同一批机器——口径来自参考站（monitor 内置 default 主题的概览四格
+         也是拿筛选后的节点算的）。分组标签整行收起（cardGroupView === 'none'）时筛选被清空，
+         这里自然回到全站口径。
      布局：上半两栏 + 中间竖线（左 COST / MONTH = 每月固定支出、与到期时间无关；右 RESIDUAL VALUE
      = 还剩多少没用掉），下半一条 **cost-foot**：左边到期提醒、右边口径小字。
-     两栏各自可在后台关掉（showCostMonthCard / showCostCard），一台都没填价格时整块收起、不留空位。
+     两栏各自可在后台关掉（showCostMonthCard / showCostCard），当前分组里一台都没填价格时整块收起、不留空位。
      到期提醒有两种形态、都由 CSS 按宽度选一种显示：宽屏逐台列出一枚一枚红印章（与原设计一致），
      窄屏收成「7 天内到期 N 台 / 已过期 N 台」两枚可点开的汇总——手机上逐台列出实测把这张卡撑到
      493px 高（首屏一半被它吃掉）。没有告警时这里显示 ALL CLEAR ✓ / NO EXPIRY SET。
@@ -1941,7 +1960,9 @@
       else missingRates.add(code);
     };
 
-    state.nodes.forEach(node => {
+    // 新增：只统计当前分组筛选出的节点（「全部」时 = 全站）。
+    // 站长在页头切分组，这张卡片与上面那排统计、下面那批卡片是同一批机器。
+    filteredNodes(Array.from(state.nodes.values())).forEach(node => {
       const price = Number(node.price);
       if (!isFinite(price) || price <= 0) return;
       month.count += 1;
@@ -1966,7 +1987,7 @@
       if (days <= COST_WARN_DAYS) resid.warn.push({ name: node.name, days });
     });
 
-    if (!month.count) return null;   // 没有任何计费信息：整块不出现
+    if (!month.count) return null;   // 当前分组里一台都没有计费信息：整块不出现
     return { base, rates, builtin, missingRates, month, resid, skipped };
   }
 

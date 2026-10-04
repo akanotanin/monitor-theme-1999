@@ -76,8 +76,8 @@
     <!-- 新增：成本汇总卡片（站点设置 showCostCard / showCostMonthCard）。
          一张卡里两栏：左边 COST / MONTH（每月花多少），右边 RESIDUAL VALUE（还剩多少没用掉）。
          内容由 script.js 的 renderCostCards() 生成；节点一台都没填价格时整块收起、不留空位。
-         摆在分组标签**上面**：它是全站口径的汇总（算的是所有节点，不受分组筛选影响），
-         所以先看汇总、再看筛选与列表。 -->
+         口径跟着分组标签走（算的是当前分组那批机器，与页头统计、下面的列表同一批），
+         位置按站长要求的原样保留在标签**上面**：先看汇总、再看筛选与列表。 -->
     <div class="cost-card" id="cost-card" hidden></div>
     <!-- 新增：分组筛选标签（Hub 的节点 group 字段）。节点都没设分组时整行收起、不留空位，
          标签本身由 script.js 的 renderGroupTabs() 生成。放在 main 内而不是页头里：
