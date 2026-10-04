@@ -396,6 +396,9 @@
             billing_cycle: client.billing_cycle || '',
             expires_at: client.expires_at || '',
             expires_in: typeof client.expires_in === 'number' ? client.expires_in : null,
+            // 节点备注（拆法与渲染见 remarkChips）：公开那条匿名可见，私有那条只有登录态才有
+            public_remark: client.public_remark || '',
+            remark: client.remark || '',
             // 移植差异：上游这里还抄了 client.gpu_name，GPU 型号极简探针不上报，已移除
             online: status ? status.online : false,
             cpu: status ? (status.cpu || 0) : 0,
@@ -1077,6 +1080,43 @@
 
   // --- Modal & Charts ---
 
+  /**
+   * 节点备注 → 一串小卡片。hub 后台给每台节点填两个字段：
+   *   · 公开备注（`public_remark`）——随公开视图下发，匿名访客也拿得到；
+   *   · 私有备注（`remark`）——只在登录态下发（面板里的 placeholder 就是「仅管理员可见」）。
+   * 写法一致：逗号（半角 `,` / 全角 `，`）分隔＝多枚；私有那条多一手「按换行也拆」（hub 对它
+   * 没有单行约束，站长常把几件事分行写）。合并时**私有在前、公有在后**——访客那边拿到的就
+   * 只有公有那几枚，不需要两套分支，也不会漏泄。
+   * 两个字段都没有（或只有空白）→ 空数组，页面上一个像素都不占。
+   */
+  function remarkChips(node) {
+    const splitByComma = (value) => String(value || '')
+      .split(/[,，]/)
+      .map((text) => text.trim())
+      .filter(Boolean);
+    const own = String(node.remark || '')
+      // 三种行尾都认（CRLF / LF / 单独的 CR）：hub 不校验这个字段，老数据里带裸 CR 的见过
+      .split(/\r\n|\r|\n/)
+      .flatMap(splitByComma)
+      .map((text) => ({ text, own: true }));
+    const pub = splitByComma(node.public_remark).map((text) => ({ text, own: false }));
+    return own.concat(pub);
+  }
+
+  const REMARK_LOCK_SVG = '<svg class="remark-lock" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<rect x="4.5" y="10.5" width="15" height="10" rx="1.5"></rect>'
+    + '<path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"></path></svg>';
+
+  function remarkChipsHTML(node) {
+    const chips = remarkChips(node);
+    if (!chips.length) return '';
+    return `<div class="modal-node-remark">${chips.map((chip) => {
+      const label = chip.own ? `仅自己可见：${chip.text}` : chip.text;
+      return `<span class="remark-chip${chip.own ? ' own' : ''}" title="${escapeHtml(label)}">`
+        + `${chip.own ? REMARK_LOCK_SVG : ''}<span class="remark-chip-text">${escapeHtml(chip.text)}</span></span>`;
+    }).join('')}</div>`;
+  }
+
   async function openNodeModal(uuid) {
     state.modalCloseId++;
     state.activeNodeUuid = uuid;
@@ -1097,6 +1137,7 @@
           <span class="modal-node-status-tag ${node.online ? 'online' : 'offline'}">${node.online ? 'Online' : 'Offline'}</span>
         </div>
         <div class="modal-node-meta">${node.os || ''} · ${node.arch || ''} · ${node.region || ''}</div>
+        ${remarkChipsHTML(node)}
       </div>
 
       <div class="modal-info-row">

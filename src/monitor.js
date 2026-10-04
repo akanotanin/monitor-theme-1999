@@ -159,7 +159,11 @@
       currency: node.currency || '',
       billing_cycle: node.billing_cycle || '',
       expires_at: node.expires_at || '',
-      expires_in: typeof node.expires_in === 'number' ? node.expires_in : null
+      expires_in: typeof node.expires_in === 'number' ? node.expires_in : null,
+      // 节点备注：公开那条随公开视图下发（匿名访客也拿得到），私有那条只在登录态下发。
+      // 这里原样透传，拆成小卡片是渲染那边的事（script.js 的 remarkChips）。
+      public_remark: node.public_remark || '',
+      remark: node.remark || ''
     };
   }
 

@@ -601,3 +601,59 @@ h1, h2, h3, h4, h5, h6,
 .btn-admin[hidden] {
   display: none;
 }
+
+/* --------------------------------------------------------------------------
+   节点备注（详情页）
+   hub 后台给每台节点填的两个字段：公开备注（随公开视图下发、匿名可见）与私有备注
+   （只在登录态下发、仅管理员可见）。script.js 的 remarkChipsHTML 把它们拆成一串小卡片，
+   **私有在前、公有在后**；私有那几枚用虚线边 + 锁图标标出来。hub 只把私有下发给登录的
+   管理员，所以访客那边根本不会出现 own 那几枚——不需要两套分支。
+   两个字段都没写（或只有空白）时整块不渲染，一个像素都不占。
+   位置：详情页页头里、「系统 · 架构 · 地区」那一行的下面（页头那条 6px 黑分隔线之上）。
+   -------------------------------------------------------------------------- */
+.modal-node-remark {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.remark-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.25rem 0.6rem;
+  border: 2px solid var(--black);
+  background: var(--white);
+  box-shadow: 3px 3px 0 var(--black);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* 私有（仅自己可见）：虚线边 + 灰底 + 锁图标，与公开那几枚一眼能分开 */
+.remark-chip.own {
+  border-style: dashed;
+  background: var(--bg);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.remark-chip-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.remark-lock {
+  width: 0.9em;
+  height: 0.9em;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+

@@ -92,6 +92,20 @@ const SCENARIOS = [
   { key: 'no-expiry', nodes: [node(21, { name: '无到期机', price: 20, currency: 'USD', billing_cycle: 'yearly', expires_in: null })], cfg: {}, want: { blocks: 2, notes: 0, reds: 0, clear: 'NO EXPIRY SET', divider: true } }
 ];
 
+// 备注夹具：公开那条（随公开视图下发、匿名也拿得到）+ 私有那条（只在登录态下发）。
+// 私有里故意带换行与半角/全角逗号混用，公开里带全角逗号——拆法见 script.js 的 remarkChips。
+const NOTES_PUB = node(50, { name: '带公开备注的机器', country: 'JP', public_remark: '公开备注一，公开备注二' });
+const NOTES_BOTH = node(51, { name: '公开与私有都有', country: 'DE', public_remark: '公开甲,公开乙', remark: '私有甲\n私有乙' });
+const NOTES_NONE = node(52, { name: '没写备注的机器', country: 'US' });
+const NOTES_BLANK = node(53, { name: '备注只有空白', country: 'US', public_remark: '   ', remark: ' , \n ' });
+// 详情页备注的场景：admin 决定桩要不要下发私有字段（真 hub 也只对登录的管理员下发）
+const REMARK_SCENARIOS = [
+  { key: 'remark-public', nodes: [NOTES_PUB], cfg: {}, admin: false, want: { chips: 2, own: 0 } },
+  { key: 'remark-both', nodes: [NOTES_BOTH], cfg: {}, admin: true, want: { chips: 4, own: 2 } },
+  { key: 'remark-none', nodes: [NOTES_NONE], cfg: {}, admin: false, want: { chips: 0, own: 0 } },
+  { key: 'remark-blank', nodes: [NOTES_BLANK], cfg: {}, admin: true, want: { chips: 0, own: 0 } }
+];
+
 /* --------------------------- 伺服 + 浏览器 --------------------------- */
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml' };
 let current = SCENARIOS[0];
@@ -99,7 +113,11 @@ const server = createServer((req, res) => {
   const path = new URL(req.url, 'http://127.0.0.1').pathname;
   const json = (obj) => { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
   if (path === '/api/me') return json({ authed: false, github: false, history_days: 30, public_page: true, site: 'fixture', site_name: '1999 夹具' });
-  if (path === '/api/nodes') return json({ admin: false, nodes: current.nodes });
+  if (path === '/api/nodes') return json({
+    admin: !!current.admin,
+    // 匿名视图里没有 remark 这个键（真 hub 只把私有备注下发给登录的管理员）
+    nodes: current.nodes.map((n) => { const copy = { ...n }; if (!current.admin) delete copy.remark; return copy; })
+  });
   if (path === '/api/themes/1999/config') return json(current.cfg);
   if (/^\/api\/nodes\/[^/]+\/metrics$/.test(path)) return json({ metrics: [], ping: [], probes: {}, loss: {} });
   const rel = normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, '');
@@ -171,6 +189,36 @@ const PROBE = `(() => {
   };
 })()`;
 
+// 详情页（弹窗）探针：备注块的位置、小卡片的拆法、私有/公开的区分、有没有溢出
+const MODAL_PROBE = `(() => {
+  const vis = (el) => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
+  const box = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), right: Math.round(r.right), bottom: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) }; };
+  const header = document.querySelector('.modal-node-header');
+  const meta = document.querySelector('.modal-node-meta');
+  const block = document.querySelector('.modal-node-remark');
+  const content = document.querySelector('.modal-content');
+  const chips = block ? [...block.querySelectorAll('.remark-chip')] : [];
+  return {
+    modalOpen: vis(document.querySelector('.modal-overlay')),
+    nodeName: (document.querySelector('.modal-node-name') || {}).textContent || '',
+    hasBlock: vis(block),
+    chips: chips.map((c) => ({
+      text: ((c.querySelector('.remark-chip-text') || {}).textContent || '').trim(),
+      own: c.classList.contains('own'),
+      title: c.getAttribute('title') || '',
+      dashed: getComputedStyle(c).borderStyle === 'dashed',
+      lock: !!c.querySelector('.remark-lock')
+    })),
+    blockBox: block ? box(block) : null,
+    metaBox: meta ? box(meta) : null,
+    headerBox: header ? box(header) : null,
+    firstSectionTop: (() => { const s = document.querySelector('.modal-info-section'); return s ? Math.round(s.getBoundingClientRect().top) : null; })(),
+    contentRight: content ? Math.round(content.getBoundingClientRect().right) : null,
+    chipOverflow: chips.length && content ? Math.max(...chips.map((c) => Math.round(c.getBoundingClientRect().right))) - Math.round(content.getBoundingClientRect().right) : null,
+    viewport: { w: innerWidth, docScrollW: document.documentElement.scrollWidth }
+  };
+})()`;
+
 const checks = [];
 const ck = (scope, label, ok, detail) => checks.push({ scope, label, ok: !!ok, detail });
 
@@ -181,6 +229,19 @@ async function load(scenario, width, height, mobile) {
   for (let i = 0; i < 60; i++) { await sleep(400); if (await evaluate(`document.querySelectorAll('.node-card').length > 0`)) break; }
   await sleep(900);
   return evaluate(PROBE);
+}
+
+// 打开第一张卡片的详情页（备注块只在详情页里）
+async function loadModal(scenario, width, height, mobile) {
+  current = scenario;
+  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile });
+  await send('Page.navigate', { url: `http://127.0.0.1:9916/?s=${scenario.key}&modal=1` });
+  for (let i = 0; i < 60; i++) { await sleep(400); if (await evaluate(`document.querySelectorAll('.node-card').length > 0`)) break; }
+  await sleep(600);
+  await evaluate(`document.querySelector('.node-card').click()`);
+  for (let i = 0; i < 40; i++) { await sleep(300); if (await evaluate(`!!document.querySelector('.modal-node-name') && document.querySelectorAll('.modal-info-section').length >= 4`)) break; }
+  await sleep(500);
+  return evaluate(MODAL_PROBE);
 }
 
 // ① 主夹具：三个机位
@@ -254,6 +315,32 @@ for (const scenario of SCENARIOS.slice(1)) {
     }
   }
 }
+
+// ③ 详情页备注
+const pubModal = await loadModal(REMARK_SCENARIOS[0], 1440, 900, false);
+ck('备注', '详情页打开了（备注断言的前提）', pubModal.modalOpen === true && pubModal.nodeName.length > 0, [pubModal.modalOpen, pubModal.nodeName]);
+ck('备注', '公开备注按逗号拆成 2 枚（全角逗号也认）', pubModal.chips.length === 2 && pubModal.chips.map((c) => c.text).join('|') === '公开备注一|公开备注二', pubModal.chips);
+ck('备注', '匿名视图里一枚私有备注都不出现', pubModal.chips.every((c) => !c.own), pubModal.chips);
+ck('备注', '公开那几枚是实线边、不带锁图标', pubModal.chips.every((c) => !c.dashed && !c.lock), pubModal.chips);
+ck('备注', '公开那几枚的悬停提示就是备注原文', pubModal.chips.every((c) => c.title === c.text), pubModal.chips.map((c) => c.title));
+
+const bothModal = await loadModal(REMARK_SCENARIOS[1], 1440, 900, false);
+ck('备注', '私有在前、公有在后（4 枚）', JSON.stringify(bothModal.chips.map((c) => c.text)) === JSON.stringify(['私有甲', '私有乙', '公开甲', '公开乙']), bothModal.chips.map((c) => c.text));
+ck('备注', '私有备注里的换行也拆（hub 对它没有单行约束）', bothModal.chips.some((c) => c.text === '私有乙'), bothModal.chips.map((c) => c.text));
+ck('备注', '私有那几枚：虚线边 + 锁图标 + 悬停写「仅自己可见」', bothModal.chips.filter((c) => c.own).length === 2 && bothModal.chips.filter((c) => c.own).every((c) => c.dashed && c.lock && /^仅自己可见：/.test(c.title)), bothModal.chips);
+ck('备注', '备注块落在页头里：系统行下面、第一个区块上面', bothModal.hasBlock && bothModal.blockBox.y >= bothModal.metaBox.bottom - 2 && bothModal.blockBox.bottom <= bothModal.headerBox.bottom + 1 && bothModal.blockBox.bottom < bothModal.firstSectionTop, [bothModal.blockBox, bothModal.metaBox, bothModal.headerBox, bothModal.firstSectionTop]);
+ck('备注', '备注块在宽屏里收在一行内（4 枚并排）', !!bothModal.blockBox && bothModal.blockBox.h <= 40, bothModal.blockBox);
+
+const noneModal = await loadModal(REMARK_SCENARIOS[2], 1440, 900, false);
+ck('备注', '两个字段都没写 → 整块不渲染（零占位）', noneModal.hasBlock === false && noneModal.blockBox === null, noneModal.hasBlock);
+const blankModal = await loadModal(REMARK_SCENARIOS[3], 1440, 900, false);
+ck('备注', '只有空白 / 逗号 → 同样一枚都不渲染', blankModal.hasBlock === false && blankModal.blockBox === null, [blankModal.hasBlock, blankModal.chips]);
+
+const phoneModal = await loadModal(REMARK_SCENARIOS[1], 390, 844, true);
+ck('备注', '窄屏小卡片不越过内容区右边缘', phoneModal.chipOverflow !== null && phoneModal.chipOverflow <= 0, [phoneModal.chipOverflow, phoneModal.contentRight]);
+ck('备注', '窄屏整页没有横向溢出', phoneModal.viewport.docScrollW <= 390, phoneModal.viewport);
+// 用 (x || {}).h 兜底：备注块整个不见了时这里要报 FAIL，而不是把护栏自己搞崩
+ck('备注', '窄屏会换行（4 枚放不下 → 块变高）', ((phoneModal.blockBox || {}).h || 0) > ((bothModal.blockBox || {}).h || 0), [phoneModal.blockBox, bothModal.blockBox]);
 
 const failed = checks.filter((c) => !c.ok);
 for (const c of checks) console.log(`${c.ok ? 'PASS' : 'FAIL'}  [${c.scope}] ${c.label}${c.ok ? '' : '  →  ' + JSON.stringify(c.detail)}`);

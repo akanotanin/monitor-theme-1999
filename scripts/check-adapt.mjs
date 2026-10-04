@@ -14,6 +14,8 @@
 //  10. 成本卡片的「到期提醒」两种形态：JS 两份 DOM 都渲染，adapt.css 按宽度选一份。
 //  11. 卡片名字必须单行省略（否则长名卡片与同行的短名卡片错位），印章文案是 TODAY / ND / EXPIRED。
 //  12. 内置参考汇率表 FX_CNY：有 CNY: 1、常见机房货币够用、带日期与来源，且脚本里没有运行时汇率接口。
+//  13. 详情页的节点备注：monitor.js 透传字段 → script.js 拆成小卡片（私有在前、公有在后）→
+//      adapt.css 有样式；私有那几枚必须带「虚线边 + 锁图标」的标记。
 import { existsSync, readFileSync } from 'node:fs';
 
 const styles = readFileSync('src/styles.css', 'utf8');
@@ -111,7 +113,9 @@ const patchedClasses = [
   'cost-card', 'cost-block', 'cost-title', 'cost-amount', 'cost-divider', 'cost-chips',
   'cost-chip', 'cost-chip-blue', 'cost-chip-red', 'cost-clear', 'cost-meta',
   'cost-note', 'cost-foot', 'cost-alerts', 'cost-alert-full', 'cost-alert-compact',
-  'cost-alert', 'cost-alert-list'
+  'cost-alert', 'cost-alert-list',
+  // 详情页的节点备注（script.js 的 remarkChipsHTML 拼出来的）
+  'modal-node-remark', 'remark-chip', 'remark-chip-text', 'remark-lock'
 ];
 const adaptSelectors = [...rules(adapt)].flatMap((rule) => rule.selectors);
 const hasClass = (selectors, cls) =>
@@ -376,6 +380,35 @@ if (!/builtin\.delete\(code\)/.test(jsCode)) {
   problems.push('站长填的汇率表没有覆盖内置值：他填的汇率不会生效（内置值会一直压在上面）');
 }
 
+// 13. 详情页的节点备注（公开 + 私有）。
+//     三处必须串起来：monitor.js 透传字段 → script.js 拆成小卡片 → adapt.css 有样式。
+//     任一处断了都不报错、也不白屏：备注要么整个不出现，要么私有那几枚丢掉「虚线 + 锁」的标记
+//     （管理员就分不出哪几条是「仅自己可见」了）。拆法本身也有硬规矩——私有那条必须认三种行尾，
+//     hub 对它没有单行约束，只按 \n 拆会把 CRLF 的历史数据粘成一枚。
+const monitorJs = stripJsComments(readFileSync('src/monitor.js', 'utf8'));
+if (!/public_remark\s*:/.test(monitorJs) || !/\bremark\s*:/.test(monitorJs)) {
+  problems.push('monitor.js 的 mapClient 没有透传 public_remark / remark：详情页里的节点备注永远不会出现');
+}
+if (!jsCode.includes('function remarkChips(') || !jsCode.includes('remarkChipsHTML(node)')) {
+  problems.push('script.js 里没有 remarkChips / remarkChipsHTML 的调用：详情页的备注块没接上');
+}
+if (!/split\(\/\\r\\n\|\\r\|\\n\//.test(jsCode)) {
+  problems.push('私有备注的切分没有同时认 CRLF / LF / 单独的 CR：hub 不校验这个字段，老数据会粘成一枚');
+}
+if (!/remark-chip\$\{chip\.own \? ' own' : ''\}/.test(jsCode) || !jsCode.includes('REMARK_LOCK_SVG')) {
+  problems.push('私有备注的小卡片没有「own + 锁图标」的标记：管理员看不出哪几条是仅自己可见');
+}
+if (!/仅自己可见/.test(jsCode)) {
+  problems.push('私有备注的小卡片没有「仅自己可见」的悬停提示');
+}
+const remarkBlockBody = ruleBody(adapt, '.modal-node-remark');
+if (!remarkBlockBody.includes('flex-wrap:wrap')) {
+  problems.push('.modal-node-remark 没有 flex-wrap: wrap：多枚备注不会换行、会把详情页撑出横向滚动');
+}
+const ownChipBody = ruleBody(adapt, '.remark-chip.own');
+if (!ownChipBody.includes('border-style:dashed')) {
+  problems.push('.remark-chip.own 没有虚线边：私有备注与公开备注在版式上分不开');
+}
 if (!existsSync('src/adapt.css')) problems.push('缺少 src/adapt.css');
 
 if (problems.length) {
