@@ -9,8 +9,11 @@
 //   6. 卡片排版依赖的上游类名（.net-totals / .net-total-item）必须还在；
 //   7. 卡片 NETWORK 区那一行的结构与顺序（含「底部栏不该再出现」）；
 //   8. .node-ping-value 与上游 .metric-value 的 font-size 必须一致（右列数字对齐）；
-//   9. 分组展示的第三种取值 none 必须真的被 script.js 处理，且「列表显示运行时间」这个
-//      开关不再出现在任何一处（按需求删除后不许悄悄回来）。
+// 9. 分组展示的第三种取值 none 必须真的被 script.js 处理，且「列表显示运行时间」这个
+//    开关不再出现在任何一处（按需求删除后不许悄悄回来）。
+//  10. 成本卡片的「到期提醒」两种形态：JS 两份 DOM 都渲染，adapt.css 按宽度选一份。
+//  11. 卡片名字必须单行省略（否则长名卡片与同行的短名卡片错位），印章文案是 TODAY / ND / EXPIRED。
+//  12. 内置参考汇率表 FX_CNY：有 CNY: 1、常见机房货币够用、带日期与来源，且脚本里没有运行时汇率接口。
 import { existsSync, readFileSync } from 'node:fs';
 
 const styles = readFileSync('src/styles.css', 'utf8');
@@ -106,7 +109,9 @@ const patchedClasses = [
   'node-ping', 'node-ping-row', 'node-ping-name', 'node-ping-value', 'node-ping-loss',
   'net-rate', 'net-total-up', 'net-total-down',
   'cost-card', 'cost-block', 'cost-title', 'cost-amount', 'cost-divider', 'cost-chips',
-  'cost-chip', 'cost-chip-blue', 'cost-chip-red', 'cost-clear', 'cost-meta'
+  'cost-chip', 'cost-chip-blue', 'cost-chip-red', 'cost-clear', 'cost-meta',
+  'cost-note', 'cost-foot', 'cost-alerts', 'cost-alert-full', 'cost-alert-compact',
+  'cost-alert', 'cost-alert-list'
 ];
 const adaptSelectors = [...rules(adapt)].flatMap((rule) => rule.selectors);
 const hasClass = (selectors, cls) =>
@@ -271,6 +276,105 @@ const iAdapt = html.indexOf('href="adapt.css"');
 if (iAdapt < 0) problems.push('index.html 没有引入 adapt.css');
 else if (iStyles < 0) problems.push('index.html 没有引入 styles.css');
 else if (iAdapt < iStyles) problems.push('index.html 里 adapt.css 排在 styles.css 之前，适配规则会被上游覆盖');
+
+// 10. 成本卡片的「到期提醒」两种形态（宽屏逐台列印章 / 窄屏汇总可点开）。
+//     两份 DOM 同时渲染、由 CSS 按宽度选一份，任一处对不上都不会报错：要么手机上又冒出
+//     十几枚红印章把卡片撑高（实测 493px，首屏一半），要么宽屏只剩一句「7 天内到期 4 台」、
+//     名字再也看不见。
+function mediaBlock(cssText, condition) {
+  const start = cssText.indexOf(`@media ${condition}`);
+  if (start < 0) return '';
+  const open = cssText.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < cssText.length; i += 1) {
+    if (cssText[i] === '{') depth += 1;
+    else if (cssText[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return cssText.slice(open, i + 1);
+    }
+  }
+  return '';
+}
+const ruleBody = (cssText, selector) =>
+  [...rules(cssText)]
+    .filter((rule) => rule.selectors.includes(selector))
+    .map((rule) => rule.body)
+    .join(';')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+if (!jsCode.includes('cost-alert-full') || !jsCode.includes('cost-alert-compact')) {
+  problems.push(
+    'script.js 没有同时渲染 cost-alert-full / cost-alert-compact：成本卡片的到期提醒会只剩一种形态'
+  );
+}
+if (!ruleBody(adapt, '.cost-alert-compact').includes('display:none')) {
+  problems.push('.cost-alert-compact 没有 display: none：宽屏下汇总与逐台印章会同时冒出来');
+}
+const narrow = mediaBlock(adapt, '(max-width: 768px)');
+if (!narrow) {
+  problems.push('adapt.css 里找不到 @media (max-width: 768px)：成本卡片的窄屏形态没有落点');
+} else {
+  if (!ruleBody(narrow, '.cost-alert-full').includes('display:none')) {
+    problems.push('窄屏没有把 .cost-alert-full 收起来：手机上会逐台列出红印章、把卡片撑得很高');
+  }
+  if (!ruleBody(narrow, '.cost-alert-compact').includes('display:flex')) {
+    problems.push('窄屏没有把 .cost-alert-compact 显示出来：手机上看不到到期汇总');
+  }
+}
+
+// 11. 卡片上的节点名必须单行省略（否则长名卡片会把名字以下的区块推下去、与同行的短名卡片错开），
+//     以及到期印章不再用 (0D) 这种读起来像打错的写法。
+const nameBody = ruleBody(adapt, '.node-name');
+if (!nameBody.includes('text-overflow:ellipsis') || !nameBody.includes('white-space:nowrap')) {
+  problems.push('.node-name 没有单行省略：长名字会把卡片的名字以下整体推下去，和同行的短名卡片错开');
+}
+if (!ruleBody(adapt, '.node-header > div:first-child').includes('min-width:0')) {
+  problems.push(
+    '.node-header > div:first-child 没有 min-width: 0：flex 子项会被不可断行的长名字撑开，省略号根本不生效'
+  );
+}
+const infoBody = ruleBody(adapt, '.node-info');
+if (!infoBody.includes('-webkit-line-clamp:2')) {
+  problems.push('.node-info 没有两行截断：长 CPU 型号会把卡片撑高、与同一排的卡片错开');
+}
+if (!/min-height:2\.7em/.test(infoBody)) {
+  problems.push('.node-info 没有预留两行高度：同一排里 1 行与 2 行的卡片会差一行（实测 74 vs 91px）');
+}
+if (!jsCode.includes("'TODAY'") || !jsCode.includes("'EXPIRED'")) {
+  problems.push('到期印章的文案不是 TODAY / ND / EXPIRED：卡片上的标签统一用大写英文，中文天数会跟其余标签混排');
+}
+if (/\(0D\)|\(今天\)|\(已过期\)/.test(jsCode)) {
+  problems.push('到期印章的文案退回了 (0D) 或中文天数：口径是 TODAY / ND / EXPIRED');
+}
+
+// 12. 内置参考汇率（FX_CNY）：站长没填的币种靠它折算，缺了就是整台机器的钱不进合计。
+//     主题是离线静态包，所以脚本里**不许**出现运行时汇率接口地址；表里必须有 CNY: 1、
+//     常见机房货币要够用，并且日期与来源要能自报家门（提示里要写出来，不能被当成实时汇率）。
+if (!/FX_CNY\s*=\s*\{/.test(jsCode)) {
+  problems.push('script.js 里找不到内置汇率表 FX_CNY：站长没填的币种会整台机器不计入合计');
+} else {
+  const start = jsCode.indexOf('FX_CNY = {');
+  const table = jsCode.slice(start, jsCode.indexOf('};', start));
+  if (!/CNY:\s*1/.test(table)) {
+    problems.push('内置汇率表里没有 CNY: 1：这张表以人民币为基准，缺了它整张表都换算不了');
+  }
+  const codes = [...table.matchAll(/^\s*([A-Z]{3}):/gm)].map((m) => m[1]);
+  if (codes.length < 10) {
+    problems.push(`内置汇率表只有 ${codes.length} 个币种：常见机房货币（USD / EUR / GBP / HKD / AUD…）要够用`);
+  }
+  if (!codes.includes('HKD') || !codes.includes('AUD')) {
+    problems.push('内置汇率表缺 HKD / AUD：这两种是机房账单里最常见的（实测最容易漏折算的就是它们）');
+  }
+}
+if (!/FX_DATE\s*=\s*'/.test(jsCode) || !/FX_SOURCE\s*=\s*'/.test(jsCode)) {
+  problems.push('内置汇率表没有 FX_DATE / FX_SOURCE：提示里没法自报「取自哪一天、哪个来源」，会被当成实时汇率');
+}
+if (/https?:\/\/[^'"\s]*(er-api|frankfurter|exchangerate)/i.test(jsCode)) {
+  problems.push('script.js 里出现了运行时汇率接口地址：主题是离线静态包，访客端不该请求外部接口');
+}
+if (!/builtin\.delete\(code\)/.test(jsCode)) {
+  problems.push('站长填的汇率表没有覆盖内置值：他填的汇率不会生效（内置值会一直压在上面）');
+}
 
 if (!existsSync('src/adapt.css')) problems.push('缺少 src/adapt.css');
 

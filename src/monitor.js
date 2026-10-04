@@ -50,11 +50,12 @@
     // 新增：成本汇总卡片（参照上游 custom-body/cost.html 的两张卡，移植版合成一张）
     showCostCard: true,          // 右栏 RESIDUAL VALUE（还剩多少没用掉）
     showCostMonthCard: true,     // 左栏 COST / MONTH（每月花多少）
-    // 结算货币：节点用别的货币时按下面 costRates 折算成它
+    // 结算货币：节点用别的货币时按汇率折算（内置参考汇率打底，这里填的优先）
     costCurrency: 'CNY',
-    // 汇率表：每行 `CODE=数字`（1 单位该货币 = 多少结算货币）。不联网取实时汇率，
-    // 用完记得自己更新；缺汇率的货币不计入合计（卡片上标「?」）。
-    costRates: 'USD=7.2\nEUR=7.8\nGBP=9.1\nJPY=0.048'
+    // 汇率表：每行 `CODE=数字`（1 单位该货币 = 多少结算货币），**留空 = 用主题内置的
+    // 参考汇率**（FX_CNY，带日期与来源的快照）；填了则同名币种覆盖内置值。
+    // 主题不联网取实时汇率，用完记得自己更新。
+    costRates: ''
   };
 
   var ACCENTS = ['yellow', 'red', 'blue', 'green', 'purple'];

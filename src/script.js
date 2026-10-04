@@ -487,11 +487,15 @@
     card.dataset.uuid = node.uuid;
     card.style.cursor = 'pointer';
 
+    // 「系统 · CPU 型号」：卡片上最多两行、超出省略号，悬停看全（见 adapt.css 的 .node-info——
+    // 它固定占两行，所以同一排卡片的指标行始终齐平，不会被长 CPU 名顶下去一行）。
+    const infoText = [node.os, node.cpu_name].filter(Boolean).join(' · ');
+
     card.innerHTML = `
       <div class="node-header">
         <div>
-          <div class="node-name">${node.name || 'Unknown'}</div>
-          <div class="node-info">${node.os || ''} · ${node.cpu_name || ''}</div>
+          <div class="node-name" title="${escapeHtml(node.name || 'Unknown')}">${escapeHtml(node.name || 'Unknown')}</div>
+          <div class="node-info" title="${escapeHtml(infoText)}">${escapeHtml(infoText)}</div>
         </div>
         <div class="node-status${isOnline ? '' : ' offline'}"></div>
       </div>
@@ -1710,13 +1714,20 @@
          节点不计入（上游同口径）；付款周期用 Hub 面板那七档换算成天数（见 COST_CYCLE_DAYS），
          其中「一次性」和将来 Hub 新加的档次都推不出每日成本，一律不计入合计（只算进 PAID
          台数并在小字里点一下），不拿 30 天之类的默认值硬凑数字；
-       · 多货币按设置里的**固定汇率**折算成结算货币，不联网取实时汇率——主题其余部分也是全离线
-         （CDN 已本地化），墙内访客去请求外部汇率接口本来就会失败。缺汇率的货币不折算、不计入
-         合计，标签上标「?」并在控制台提示一次。
-     上游把「每月花多少」与「还剩多少」做成两张卡，移植版按站点要求合成一张卡里的两栏：
-     左边 COST / MONTH（每月固定支出，与到期时间无关），中间竖线，右边 RESIDUAL VALUE
-     （标题 + 大数字 + 告警印章 / ALL CLEAR），最右边一行小字。两栏各自可在后台关掉
-     （showCostMonthCard / showCostCard）；一台都没填价格时整块收起、不留空位。
+       · 多货币折算：内置参考汇率（FX_CNY = 快照 + 日期 + 来源）打底，站长在主题设置里填的
+         costRates **优先**覆盖同名币种。访客端**不联网**取实时汇率——主题是离线静态包，
+         墙内访客去请求外部汇率接口本来就会失败；用内置值折出来的标签会在悬停提示里自报
+         「取自哪一天、哪个来源」。两张表里都没有的货币**不进标签行**（它们与已折算的标签
+         长得一样，只有一个角标，手机上还没有 hover），改由大数字下面那行「未计入 …」虚线
+         小框说明——大数字本身不含这部分钱，不写出来就是把合计说多了；
+         「0.00 的标签」不再生成（到期当天 (price/周期)×0 会造出一个没有信息量的 0 小计）；
+       · 到期的机器做成红色印章：`! 名字 (TODAY / 5D / EXPIRED)`。
+     布局：上半两栏 + 中间竖线（左 COST / MONTH = 每月固定支出、与到期时间无关；右 RESIDUAL VALUE
+     = 还剩多少没用掉），下半一条 **cost-foot**：左边到期提醒、右边口径小字。
+     两栏各自可在后台关掉（showCostMonthCard / showCostCard），一台都没填价格时整块收起、不留空位。
+     到期提醒有两种形态、都由 CSS 按宽度选一种显示：宽屏逐台列出一枚一枚红印章（与原设计一致），
+     窄屏收成「7 天内到期 N 台 / 已过期 N 台」两枚可点开的汇总——手机上逐台列出实测把这张卡撑到
+     493px 高（首屏一半被它吃掉）。没有告警时这里显示 ALL CLEAR ✓ / NO EXPIRY SET。
      -------------------------------------------------------------------------- */
   // 付款周期 → 天数（与 Hub 面板的七档一一对应；天数口径写进 README，Hub 自己没有这张表）。
   // 注意这里**不给默认值**：`once`（一次性）以及以后 Hub 新加的档次都推不出每日成本，
@@ -1732,6 +1743,37 @@
   const COST_WARN_DAYS = 7;        // 7 天内到期做成红色印章（上游同值）
   const COST_CARD_TTL = 300000;    // 页面长时间开着时 5 分钟重算一次（这个数字是天级变化的）
   const CURRENCY_SYMBOLS = { USD: '$', CNY: '¥', EUR: '€', GBP: '£', JPY: '¥' };
+
+  // 内置参考汇率：1 单位该币种 = 多少人民币。站长在主题设置里填的 costRates **优先**，
+  // 这份表只用来兜住他没填的币种——缺一个币种就是整台机器的钱不进合计，而卡片上原本
+  // 只看得出一个「?」角标（手机上连 hover 都没有）。
+  // 主题是离线的静态包，访客端**不联网**取实时汇率（墙内请求外部汇率接口本来就会失败），
+  // 所以照 jikasei 的做法取一份快照写死在这里，日期与来源跟着表一起发出去、在提示里自报家门。
+  // 发版时顺手更新这张表即可，别处不用动。
+  const FX_DATE = '2026-10-04';
+  const FX_SOURCE = 'open.er-api.com';
+  const FX_CNY = {
+    CNY: 1,
+    USD: 6.72,
+    EUR: 7.5727,
+    GBP: 8.896,
+    JPY: 0.0426,
+    HKD: 0.8566,
+    TWD: 0.2105,
+    SGD: 5.267,
+    AUD: 4.6682,
+    CAD: 4.725,
+    RUB: 0.08,
+    KRW: 0.004958,
+    INR: 0.069876,
+    THB: 0.20055,
+    MYR: 1.6483,
+    NZD: 3.7531,
+    CHF: 8.0957,
+    PHP: 0.1072,
+    VND: 0.000258,
+    IDR: 0.000373
+  };
 
   // 卡片右栏 RESIDUAL VALUE
   function costResidualEnabled() {
@@ -1753,17 +1795,29 @@
     return CURRENCY_SYMBOLS[code] ? code : 'CNY';
   }
 
-  // 汇率表：每行 `CODE=数字`，意思是 1 单位该货币 = 多少结算货币；结算货币自身恒为 1。
+  // 汇率表：内置参考表（FX_CNY，按结算货币换算过来）+ 站长在主题设置里填的（他填的优先，
+  // 同名币种直接覆盖）。builtin 记下哪些币种用的是内置值——提示里要自报「取自哪一天」，
+  // 不能让访客以为这是实时汇率。
   function costRates(base) {
     const rates = {};
+    const builtin = new Set();
+    const baseCny = FX_CNY[base] || 1;
+    Object.keys(FX_CNY).forEach(code => {
+      const value = code === base ? 1 : FX_CNY[code] / baseCny;
+      if (isFinite(value) && value > 0) { rates[code] = value; builtin.add(code); }
+    });
     String(state.settings.costRates || '').split(/[\n,;；]+/).forEach(line => {
       const matched = line.match(/^\s*([A-Za-z]{3})\s*[=:：]\s*([0-9]*\.?[0-9]+)\s*$/);
       if (!matched) return;
       const value = parseFloat(matched[2]);
-      if (isFinite(value) && value > 0) rates[matched[1].toUpperCase()] = value;
+      if (!isFinite(value) || value <= 0) return;
+      const code = matched[1].toUpperCase();
+      rates[code] = value;
+      builtin.delete(code);
     });
     rates[base] = 1;
-    return rates;
+    builtin.delete(base);
+    return { rates, builtin };
   }
 
   // 与 Hub 面板的 money() 同一套写法（符号 + 两位小数），两边看起来才是一回事
@@ -1779,21 +1833,46 @@
     console.warn(`[Monitor Theme] 剩余价值卡片：汇率表里没有 ${code}，这部分未计入合计（主题设置 → 汇率表）`);
   }
 
-  // 每种货币一个小计标签。结算货币本身也列出来（上游 monthly 卡的写法：大数字是折算后的
-  // 合计，标签上是该货币的原始金额），汇率表里没有的货币标「?」、不计入合计。
-  function costChips(bucket, base, rates, missingRates) {
-    const chips = [];
-    [...bucket.subtotals.entries()].sort((a, b) => b[1] - a[1]).forEach(([code, amount]) => {
-      const unknownRate = code !== base && !rates[code];
-      if (unknownRate) missingRates.add(code);
-      const title = unknownRate
-        ? '汇率表里没有这个货币，未计入合计'
-        : `折合 ${costMoney(code === base ? amount : amount * rates[code], base)}`;
-      chips.push(
-        `<span class="cost-chip cost-chip-blue" title="${title}">${costMoney(amount, code)}${unknownRate ? ' ?' : ''}</span>`
-      );
+  // 每种货币一枚小标签，**只列已折算的**（结算货币本身也列：大数字是折算后的合计，
+  // 标签上是该货币的原始金额）。缺汇率的货币不进这一行——挤在一起时它们和已折算的
+  // 长得一模一样，只有一个「?」角标，手机上还没有 hover，访客看不出「这部分钱没算进合计」，
+  // 改由 costNote() 在对应那一栏单独说明。
+  // 排序按**折算后**的金额：混着币种时按原始数字排没有意义（360.00 HKD 比 ¥83.16 小）。
+  function costCurrencyRows(bucket, base, rates) {
+    const rows = [];
+    bucket.subtotals.forEach((amount, code) => {
+      if (amount < 0.005) return;                 // 0.00 的标签（到期当天折算成 0）没有信息量
+      const rate = code === base ? 1 : rates[code];
+      if (!rate) return;                          // 缺汇率 → 走 costNote()
+      rows.push({ code, amount, converted: amount * rate });
     });
-    return chips;
+    return rows.sort((a, b) => b.converted - a.converted);
+  }
+
+  function costChips(bucket, base, rates, builtin) {
+    return costCurrencyRows(bucket, base, rates).map(row => {
+      const fromBuiltin = !!(builtin && builtin.has(row.code));
+      const title = `折合 ${costMoney(row.converted, base)}` + (fromBuiltin
+        ? `（汇率取自 ${FX_DATE} 的内置参考值，可在主题设置里覆盖）`
+        : '');
+      return `<span class="cost-chip cost-chip-blue" title="${title}">${costMoney(row.amount, row.code)}</span>`;
+    });
+  }
+
+  // 缺汇率的货币：在对应那一栏的大数字下面摆一行虚线小框。
+  // 内置参考表兜过之后这里只会剩下真的不认识的币种；没有它的时候这一栏看起来
+  // 「已经是全部了」，而实际少算的钱可能是显示值的 1.4 倍，所以金额再小也要留着。
+  function costNote(bucket, base, rates) {
+    const rows = [];
+    bucket.subtotals.forEach((amount, code) => {
+      if (amount < 0.005) return;
+      if (code === base || rates[code]) return;
+      rows.push({ code, amount });
+    });
+    if (!rows.length) return '';
+    rows.sort((a, b) => b.amount - a.amount);
+    const text = rows.map(row => costMoney(row.amount, row.code)).join(' / ');
+    return `<div class="cost-note" title="汇率表（主题设置）与内置参考汇率里都没有这些货币，未折算、也不计入合计">未计入 ${text}</div>`;
   }
 
   // 一次遍历同时算出两栏小计：
@@ -1802,14 +1881,17 @@
   // 返回 null 表示一台节点都没填价格——整块卡片不出现。
   function costSummary() {
     const base = costBaseCurrency();
-    const rates = costRates(base);
+    const { rates, builtin } = costRates(base);
     const missingRates = new Set();
     const month = { subtotals: new Map(), total: 0, count: 0 };
     const resid = { subtotals: new Map(), total: 0, paid: 0, daysSum: 0, withExpiry: 0, warn: [], expired: [] };
     let skipped = 0;   // 有价格但付款周期推不出成本的台数（一次性等），两栏都不计入
 
-    // 记到对应那一栏：能用结算货币就直接加，否则按汇率折算；缺汇率就只标出来
+    // 记到对应那一栏：能用结算货币就直接加，否则按汇率折算；缺汇率就只标出来。
+    // 金额小到四位小数下就是 0 的不记：到期当天 `(price / 周期) × 0` 会凭空造出一个
+    // 「0.00 HKD ?」的小计标签——既没有信息量，还让人以为 HKD 那部分没折算进合计。
     const add = (bucket, code, amount) => {
+      if (amount < 0.005) return;
       bucket.subtotals.set(code, (bucket.subtotals.get(code) || 0) + amount);
       if (code === base) bucket.total += amount;
       else if (rates[code]) bucket.total += amount * rates[code];
@@ -1835,14 +1917,14 @@
       const days = Number(node.expires_in);
       if (!isFinite(days)) return;                    // 到期时间格式不认识
       resid.withExpiry += 1;
-      if (days < 0) { resid.expired.push({ name: node.name }); return; }
+      if (days < 0) { resid.expired.push({ name: node.name, days }); return; }
       add(resid, code, (price / cycleDays) * days);
       resid.daysSum += days;
       if (days <= COST_WARN_DAYS) resid.warn.push({ name: node.name, days });
     });
 
     if (!month.count) return null;   // 没有任何计费信息：整块不出现
-    return { base, rates, missingRates, month, resid, skipped };
+    return { base, rates, builtin, missingRates, month, resid, skipped };
   }
 
   function costCardHTML() {
@@ -1854,35 +1936,40 @@
 
     const blocks = [];
     if (showMonth) {
-      blocks.push(
-        costBlock('COST / MONTH', costMoney(s.month.total, s.base), costChips(s.month, s.base, s.rates, s.missingRates))
-      );
+      blocks.push(costBlock(
+        'COST / MONTH',
+        costMoney(s.month.total, s.base),
+        costChips(s.month, s.base, s.rates, s.builtin),
+        costNote(s.month, s.base, s.rates)
+      ));
     }
 
+    // 到期提醒只在右栏开着时才有（它与「还剩多少没用掉」是同一件事的两面）
+    let alerts = '';
     if (showResid) {
-      const residChips = costChips(s.resid, s.base, s.rates, s.missingRates);
-      s.resid.warn.sort((a, b) => a.days - b.days).forEach(node => {
-        residChips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (${node.days}D)</span>`);
-      });
-      s.resid.expired.forEach(node => {
-        residChips.push(`<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (EXPIRED)</span>`);
-      });
-      if (!residChips.length) {
-        residChips.push(`<span class="cost-clear">${s.resid.withExpiry ? 'ALL CLEAR ✓' : 'NO EXPIRY SET'}</span>`);
-      }
-      blocks.push(costBlock('RESIDUAL VALUE', costMoney(s.resid.total, s.base), residChips));
+      blocks.push(costBlock(
+        'RESIDUAL VALUE',
+        costMoney(s.resid.total, s.base),
+        costChips(s.resid, s.base, s.rates, s.builtin),
+        costNote(s.resid, s.base, s.rates)
+      ));
+      alerts = costAlertsHTML(s.resid);
     }
 
     // 右侧小字：在算的台数 / 剩余天数合计 / 用到的汇率 / 没摊进来的台数
     const meta = [`${s.month.count} PAID`];
     if (showResid && s.resid.withExpiry) meta.push(`${s.resid.daysSum}D LEFT`);
-    const usedRates = [...new Set([
+    const usedCodes = [...new Set([
       ...(showMonth ? s.month.subtotals.keys() : []),
       ...(showResid ? s.resid.subtotals.keys() : [])
-    ])]
-      .filter(code => code !== s.base && s.rates[code])
-      .map(code => `${code} ${s.rates[code]}`);
-    if (usedRates.length) meta.push(`RATE ${usedRates.join(' / ')}`);
+    ])].filter(code => code !== s.base && s.rates[code]);
+    if (usedCodes.length) {
+      // 用内置参考汇率折算的币种打个 `*`：这一格小字放不下日期与来源，挂到悬停提示上
+      // （站长的汇率表覆盖过的币种没有这个记号）。
+      const starred = usedCodes.some(code => s.builtin.has(code));
+      const usedRates = usedCodes.map(code => `${code} ${s.rates[code]}${s.builtin.has(code) ? '*' : ''}`);
+      meta.push(`<span${starred ? ` title="带 * 的币种用的是主题内置参考汇率（${FX_DATE} 取自 ${FX_SOURCE}），可在主题设置 → 汇率表里覆盖"` : ''}>RATE ${usedRates.join(' / ')}</span>`);
+    }
     if (s.skipped) {
       meta.push(
         `<span title="付款周期推不出成本（一次性等），这些节点的金额没有算进合计">${s.skipped} SKIPPED</span>`
@@ -1891,18 +1978,57 @@
 
     s.missingRates.forEach(warnMissingRate);
 
-    return `${blocks.join('<div class="cost-divider"></div>')}<div class="cost-meta">${meta.join(' · ')}</div>`;
+    return `${blocks.join('<div class="cost-divider"></div>')}<div class="cost-foot">${alerts}<div class="cost-meta">${meta.join(' · ')}</div></div>`;
   }
 
-  // 一栏：标题 + 大数字 + 标签行
-  function costBlock(title, amount, chips) {
+  // 一栏：标题 + 大数字 +（未折算说明）+ 已折算的币种小标签
+  function costBlock(title, amount, chips, note) {
     return `
       <div class="cost-block">
         <span class="cost-title">${title}</span>
         <div class="cost-amount">${amount}</div>
-        <div class="cost-chips">${chips.join('')}</div>
+        ${note || ''}
+        ${chips.length ? `<div class="cost-chips">${chips.join('')}</div>` : ''}
       </div>
     `;
+  }
+
+  // 到期印章：`! 名字 (TODAY / 5D / EXPIRED)`。天数就是 Hub 的 expires_in，
+  // 0 天写 TODAY——`(0D)` 在卡片上读起来像打错了。
+  function costAlertChip(node) {
+    const label = node.days < 0 ? 'EXPIRED' : (node.days === 0 ? 'TODAY' : `${node.days}D`);
+    return `<span class="cost-chip cost-chip-red">! ${escapeHtml(node.name)} (${label})</span>`;
+  }
+
+  // 卡片底下那一条：左边到期提醒、右边口径小字。
+  // 提醒有两种形态，同时渲染、由 CSS 按宽度选一种：宽屏逐台列出一枚一枚红印章（与原设计一致），
+  // 窄屏收成「7 天内到期 4 台」+ 点开看名字——手机上逐台列出实测把这张卡撑到 493px 高，
+  // 首屏全被它吃掉，服务器卡片要滚动才看得到。
+  // 不引 JS 状态：这张卡每 5 分钟整块重画一次，展开状态交给 <details> 自己管（重画后默认收起）。
+  function costAlertsHTML(resid) {
+    const groups = [];
+    if (resid.warn.length) {
+      groups.push({ title: `${COST_WARN_DAYS} 天内到期 ${resid.warn.length} 台`, items: resid.warn.slice().sort((a, b) => a.days - b.days) });
+    }
+    if (resid.expired.length) {
+      groups.push({ title: `已过期 ${resid.expired.length} 台`, items: resid.expired.slice().sort((a, b) => a.days - b.days) });
+    }
+    if (!groups.length) {
+      // 修了个旧账：从前这句挂在「右栏一枚标签都没有」上，而币种标签一直都在，
+      // 于是「没有到期告警」时这句几乎永远不出现。
+      const clear = resid.withExpiry ? 'ALL CLEAR ✓' : 'NO EXPIRY SET';
+      return `<div class="cost-alerts"><span class="cost-clear">${clear}</span></div>`;
+    }
+    const full = groups.map(group => group.items.map(costAlertChip).join('')).join('');
+    const compact = groups.map(group => `
+          <details class="cost-alert">
+            <summary class="cost-chip cost-chip-red">! ${group.title}</summary>
+            <div class="cost-alert-list">${group.items.map(costAlertChip).join('')}</div>
+          </details>`).join('');
+    return `<div class="cost-alerts">
+        <div class="cost-alert-full">${full}</div>
+        <div class="cost-alert-compact">${compact}</div>
+      </div>`;
   }
 
   function renderCostCards() {

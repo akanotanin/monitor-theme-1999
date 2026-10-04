@@ -73,15 +73,18 @@
   </header>
 
   <main class="main">
+    <!-- 新增：成本汇总卡片（站点设置 showCostCard / showCostMonthCard）。
+         一张卡里两栏：左边 COST / MONTH（每月花多少），右边 RESIDUAL VALUE（还剩多少没用掉）。
+         内容由 script.js 的 renderCostCards() 生成；节点一台都没填价格时整块收起、不留空位。
+         摆在分组标签**上面**：它是全站口径的汇总（算的是所有节点，不受分组筛选影响），
+         所以先看汇总、再看筛选与列表。 -->
+    <div class="cost-card" id="cost-card" hidden></div>
     <!-- 新增：分组筛选标签（Hub 的节点 group 字段）。节点都没设分组时整行收起、不留空位，
          标签本身由 script.js 的 renderGroupTabs() 生成。放在 main 内而不是页头里：
          页头高度会被 JS 拿去算 main 的 padding-top，标签行会随分组数量换行，
-         塞进页头会让这块高度变得不可预测。 -->
+         塞进页头会让这块高度变得不可预测。
+         紧贴节点列表（在汇总卡片下面）：它筛的就是下面这批卡片，点完一眼就能看到列表变了。 -->
     <div class="group-tabs" id="group-tabs" role="group" aria-label="按分组筛选" hidden></div>
-    <!-- 新增：成本汇总卡片（站点设置 showCostCard / showCostMonthCard）。
-         一张卡里两栏：左边 COST / MONTH（每月花多少），右边 RESIDUAL VALUE（还剩多少没用掉）。
-         内容由 script.js 的 renderCostCards() 生成；节点一台都没填价格时整块收起、不留空位。 -->
-    <div class="cost-card" id="cost-card" hidden></div>
     <div class="nodes-container" id="nodes-container">
       <div class="loading" role="status" aria-label="Loading nodes">
         <div class="loading-panel">
