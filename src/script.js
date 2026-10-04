@@ -1108,6 +1108,8 @@
     + '<path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"></path></svg>';
 
   function remarkChipsHTML(node) {
+    // 站点设置「详情页显示节点备注」（showRemark）：关掉后详情页里这一块整个不渲染
+    if (state.settings.showRemark === false) return '';
     const chips = remarkChips(node);
     if (!chips.length) return '';
     return `<div class="modal-node-remark">${chips.map((chip) => {

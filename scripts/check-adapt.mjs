@@ -401,13 +401,24 @@ if (!/remark-chip\$\{chip\.own \? ' own' : ''\}/.test(jsCode) || !jsCode.include
 if (!/仅自己可见/.test(jsCode)) {
   problems.push('私有备注的小卡片没有「仅自己可见」的悬停提示');
 }
+// 站点开关：关掉后详情页里这一块不该出现（数据照旧在 node 上）。
+if (!/state\.settings\.showRemark === false/.test(jsCode)) {
+  problems.push('script.js 没有读 showRemark：后台关掉「详情页显示节点备注」后详情页照旧显示');
+}
 const remarkBlockBody = ruleBody(adapt, '.modal-node-remark');
 if (!remarkBlockBody.includes('flex-wrap:wrap')) {
   problems.push('.modal-node-remark 没有 flex-wrap: wrap：多枚备注不会换行、会把详情页撑出横向滚动');
 }
+// 站长口径：私有那几枚的版式与公开**完全一致**，区分只靠锁图标 —— 所以这里反过来查：
+// .remark-chip.own 里不许出现另一种边框 / 底色 / 阴影（加回来就与公开那几枚长得不一样了）。
 const ownChipBody = ruleBody(adapt, '.remark-chip.own');
-if (!ownChipBody.includes('border-style:dashed')) {
-  problems.push('.remark-chip.own 没有虚线边：私有备注与公开备注在版式上分不开');
+for (const forbidden of ['border-style:dashed', 'background:var(--bg)', 'box-shadow:none']) {
+  if (ownChipBody.includes(forbidden)) {
+    problems.push(`.remark-chip.own 里出现了 ${forbidden}：私有备注的版式要与公开一致，区分只靠锁图标`);
+  }
+}
+if (!ruleBody(adapt, '.remark-lock').includes('width')) {
+  problems.push('.remark-lock 没有尺寸：那枚小锁图标不会显示出来（私有备注就与公开分不开了）');
 }
 if (!existsSync('src/adapt.css')) problems.push('缺少 src/adapt.css');
 

@@ -134,6 +134,13 @@
       "help": "columns 三条线路并排成三列（卡片更矮）/ rows 每条占一行。只影响卡片视图"
     },
     {
+      "type": "boolean",
+      "key": "showRemark",
+      "label": "详情页显示节点备注",
+      "default": true,
+      "help": "详情页里显示节点备注（Hub 后台按节点填的公开 / 私有备注，逗号分隔＝多枚）；关掉后这一块不渲染"
+    },
+    {
       "type": "title",
       "label": "成本卡片"
     },

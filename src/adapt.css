@@ -633,12 +633,10 @@ h1, h2, h3, h4, h5, h6,
   line-height: 1.35;
 }
 
-/* 私有（仅自己可见）：虚线边 + 灰底 + 锁图标，与公开那几枚一眼能分开 */
+/* 私有（仅自己可见）：版式与公开那几枚**完全一致**（实线边 + 白底 + 硬阴影），
+   区分只靠多出来的一枚小锁图标 + 悬停提示（站长口径：不要另一种边框/底色，只留锁）。 */
 .remark-chip.own {
-  border-style: dashed;
-  background: var(--bg);
-  color: var(--text-muted);
-  box-shadow: none;
+  cursor: help;
 }
 
 .remark-chip-text {

@@ -103,7 +103,9 @@ const REMARK_SCENARIOS = [
   { key: 'remark-public', nodes: [NOTES_PUB], cfg: {}, admin: false, want: { chips: 2, own: 0 } },
   { key: 'remark-both', nodes: [NOTES_BOTH], cfg: {}, admin: true, want: { chips: 4, own: 2 } },
   { key: 'remark-none', nodes: [NOTES_NONE], cfg: {}, admin: false, want: { chips: 0, own: 0 } },
-  { key: 'remark-blank', nodes: [NOTES_BLANK], cfg: {}, admin: true, want: { chips: 0, own: 0 } }
+  { key: 'remark-blank', nodes: [NOTES_BLANK], cfg: {}, admin: true, want: { chips: 0, own: 0 } },
+  // 站点把「详情页显示节点备注」关掉：备注数据都在，这一块也不该出现
+  { key: 'remark-off', nodes: [NOTES_BOTH], cfg: { showRemark: false }, admin: true, want: { chips: 0, own: 0 } }
 ];
 
 /* --------------------------- 伺服 + 浏览器 --------------------------- */
@@ -206,8 +208,11 @@ const MODAL_PROBE = `(() => {
       text: ((c.querySelector('.remark-chip-text') || {}).textContent || '').trim(),
       own: c.classList.contains('own'),
       title: c.getAttribute('title') || '',
-      dashed: getComputedStyle(c).borderStyle === 'dashed',
-      lock: !!c.querySelector('.remark-lock')
+      border: getComputedStyle(c).borderStyle,
+      bg: getComputedStyle(c).backgroundColor,
+      shadow: getComputedStyle(c).boxShadow,
+      lock: !!c.querySelector('.remark-lock'),
+      lockW: (() => { const l = c.querySelector('.remark-lock'); return l ? Math.round(l.getBoundingClientRect().width) : 0; })()
     })),
     blockBox: block ? box(block) : null,
     metaBox: meta ? box(meta) : null,
@@ -327,7 +332,12 @@ ck('备注', '公开那几枚的悬停提示就是备注原文', pubModal.chips.
 const bothModal = await loadModal(REMARK_SCENARIOS[1], 1440, 900, false);
 ck('备注', '私有在前、公有在后（4 枚）', JSON.stringify(bothModal.chips.map((c) => c.text)) === JSON.stringify(['私有甲', '私有乙', '公开甲', '公开乙']), bothModal.chips.map((c) => c.text));
 ck('备注', '私有备注里的换行也拆（hub 对它没有单行约束）', bothModal.chips.some((c) => c.text === '私有乙'), bothModal.chips.map((c) => c.text));
-ck('备注', '私有那几枚：虚线边 + 锁图标 + 悬停写「仅自己可见」', bothModal.chips.filter((c) => c.own).length === 2 && bothModal.chips.filter((c) => c.own).every((c) => c.dashed && c.lock && /^仅自己可见：/.test(c.title)), bothModal.chips);
+// 站长口径：私有那几枚的版式与公开**完全一致**（实线边 + 白底 + 硬阴影），区分只靠多出来的一枚小锁
+const ownChips = bothModal.chips.filter((c) => c.own);
+const pubChips = bothModal.chips.filter((c) => !c.own);
+ck('备注', '私有那几枚：实线边 + 白底 + 硬阴影，与公开同版式', ownChips.length === 2 && ownChips.every((c) => c.border === 'solid' && c.bg === pubChips[0].bg && c.shadow === pubChips[0].shadow), [ownChips.map((c) => [c.border, c.bg]), pubChips.map((c) => [c.border, c.bg])]);
+ck('备注', '私有那几枚多一枚小锁图标（唯一的区分）', ownChips.every((c) => c.lock && c.lockW > 0) && pubChips.every((c) => !c.lock), [ownChips.map((c) => [c.lock, c.lockW]), pubChips.map((c) => c.lock)]);
+ck('备注', '私有那几枚的悬停写「仅自己可见：…」', ownChips.every((c) => /^仅自己可见：/.test(c.title)) && pubChips.every((c) => c.title === c.text), [ownChips.map((c) => c.title), pubChips.map((c) => c.title)]);
 ck('备注', '备注块落在页头里：系统行下面、第一个区块上面', bothModal.hasBlock && bothModal.blockBox.y >= bothModal.metaBox.bottom - 2 && bothModal.blockBox.bottom <= bothModal.headerBox.bottom + 1 && bothModal.blockBox.bottom < bothModal.firstSectionTop, [bothModal.blockBox, bothModal.metaBox, bothModal.headerBox, bothModal.firstSectionTop]);
 ck('备注', '备注块在宽屏里收在一行内（4 枚并排）', !!bothModal.blockBox && bothModal.blockBox.h <= 40, bothModal.blockBox);
 
@@ -335,6 +345,9 @@ const noneModal = await loadModal(REMARK_SCENARIOS[2], 1440, 900, false);
 ck('备注', '两个字段都没写 → 整块不渲染（零占位）', noneModal.hasBlock === false && noneModal.blockBox === null, noneModal.hasBlock);
 const blankModal = await loadModal(REMARK_SCENARIOS[3], 1440, 900, false);
 ck('备注', '只有空白 / 逗号 → 同样一枚都不渲染', blankModal.hasBlock === false && blankModal.blockBox === null, [blankModal.hasBlock, blankModal.chips]);
+
+const offModal = await loadModal(REMARK_SCENARIOS[4], 1440, 900, false);
+ck('备注', '站点关掉「详情页显示节点备注」→ 整块不渲染（数据都在也不显示）', offModal.hasBlock === false && offModal.blockBox === null && offModal.chips.length === 0, [offModal.hasBlock, offModal.chips]);
 
 const phoneModal = await loadModal(REMARK_SCENARIOS[1], 390, 844, true);
 ck('备注', '窄屏小卡片不越过内容区右边缘', phoneModal.chipOverflow !== null && phoneModal.chipOverflow <= 0, [phoneModal.chipOverflow, phoneModal.contentRight]);

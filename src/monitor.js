@@ -40,6 +40,7 @@
     cardGroupView: 'tabs',
     // 新增：卡片上的三网延迟（探测线路的最新延迟，最多 3 条）
     showNodePing: true,
+    showRemark: true,
     // 卡片上要显示哪几条探测线路：名字用换行或逗号分隔，按填写的顺序显示；
     // 留空 = 自动取有数据的前 3 条（CARD_PING_LINES）。名字对不上 Hub 的探测任务名
     // 就当作该节点没有这条线路，直接不显示（script.js 的 cardPingWanted）。
@@ -216,7 +217,7 @@
             else if (key === 'cardPingLayout' && CARD_PING_LAYOUTS.indexOf(value) >= 0) merged[key] = value;
             else if (key === 'dataUpdateInterval' && typeof value === 'number' && isFinite(value)) {
               merged[key] = Math.min(60, Math.max(1, Math.round(value)));
-            } else if (key === 'showLoginButton' || key === 'showNodePing') {
+            } else if (key === 'showLoginButton' || key === 'showNodePing' || key === 'showRemark') {
               if (typeof value === 'boolean') merged[key] = value;
             } else if (key === 'cardPingLines') {
               // 只是个筛选条件（线路名清单），非字符串一律忽略；长度上限防呆，
