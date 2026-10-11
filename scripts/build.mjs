@@ -3,7 +3,7 @@
 // 第三方资源（ECharts、字体）搬到 dist/，所以构建产物可逐文件对应回源码。
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 
-const SRC_FILES = ['index.html', 'styles.css', 'adapt.css', 'script.js', 'monitor.js'];
+const SRC_FILES = ['index.html', 'styles.css', 'adapt.css', 'script.js', 'monitor.js', 'favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'apple-touch-icon-precomposed.png'];
 const SRC_DIRS = ['vendor'];
 const VENDOR_FILES = ['echarts.min.js'];
 
@@ -36,7 +36,10 @@ cpSync('vendor/fonts', 'dist/vendor/fonts', { recursive: true });
 // 产物自检：引用到的本地资源必须都在包里，否则用户在浏览器里只会看到一个空白页
 const html = readdirSync('dist');
 if (!html.includes('index.html')) throw new Error('dist/index.html 没有生成');
-for (const asset of ['vendor/echarts.min.js', 'vendor/fonts.css', 'adapt.css', 'monitor.js', 'script.js', 'styles.css']) {
+const assets = ['vendor/echarts.min.js', 'vendor/fonts.css', 'adapt.css', 'monitor.js', 'script.js', 'styles.css'];
+// hub 1.4.0 的站点图标：四份兜底文件缺一份，那一条路径就回落到内置默认图标（不是本主题的）
+assets.push('favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'apple-touch-icon-precomposed.png');
+for (const asset of assets) {
   if (!existsSync(`dist/${asset}`)) throw new Error(`dist/${asset} 没有生成`);
 }
 const fonts = readdirSync('dist/vendor/fonts').filter((f) => f.endsWith('.woff2'));

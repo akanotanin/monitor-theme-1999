@@ -19,8 +19,10 @@
  *   GET /api/themes/1999/config                    → 主题配置对象（未保存过返回 {}）
  *
  * 关于 hours/points：Hub 把请求的桶数 points 夹在 60..1440，步长
- * step = 60s * ceil(hours*60/points)。匿名窗口上限 168 小时（登录 2160），
- * 超限会被**静默夹到上限**，所以下面显式带上上限信息给界面用。
+ * step = 60s * ceil(hours*60/points)。窗口上限自 hub 1.3.2 起改为「保留天数」
+ * （`/api/me` 的 history_days，匿名与登录同源），超限会被**静默夹到上限**，
+ * 所以下面按 history_days 算上限并显式带给界面用；旧 hub 没有该字段时回落到
+ * 168 / 2160 两档。
  */
 (function () {
   'use strict';
@@ -66,7 +68,8 @@
   var CARD_GROUP_VIEWS = ['tabs', 'sections', 'none'];
   var CARD_PING_LAYOUTS = ['rows', 'columns'];
 
-  // Hub 的历史窗口上限（见 src/api.rs 的 PUBLIC_HOURS / ADMIN_HOURS）
+  // 旧 hub 的历史窗口上限（1.3.2 起改为按 /api/me 的 history_days，见 maxHoursFor）。
+  // 1.3.2 之前：匿名 168、登录 2160。
   var MAX_HOURS_PUBLIC = 168;
   var MAX_HOURS_ADMIN = 2160;
 
@@ -76,18 +79,22 @@
 
   var snapshot = { at: 0, list: null };
   var inflight = null;
+  // 当前在途的那条 /api/nodes 请求的中断器（hub 1.4.x 适配：切后台时丢弃在途请求，
+  // 由 script.js 的 visibilitychange 调 abortNodesFetch）。
+  var nodesAbort = null;
 
   // /api/me 的短缓存：站点信息与登录态在初始化时各取一次，没必要打两遍
   var ME_TTL_MS = 5000;
   var meCache = { at: 0, value: null };
 
   var settings = null;
-  var me = { authed: false, public_page: true, site_name: '' };
+  var me = { authed: false, public_page: true, site_name: '', historyDays: null };
 
-  function fetchJSON(url) {
+  function fetchJSON(url, signal) {
     return fetch(url, {
       headers: { Accept: 'application/json' },
-      credentials: 'same-origin'
+      credentials: 'same-origin',
+      signal: signal
     }).then(function (res) {
       if (!res.ok) throw new Error(url + ' → HTTP ' + res.status);
       return res.json();
@@ -120,18 +127,43 @@
       return Promise.resolve(snapshot.list);
     }
     if (!force && inflight) return inflight;
-    inflight = fetchJSON('/api/nodes')
+    var controller = new AbortController();
+    nodesAbort = controller;
+    var clear = function () {
+      inflight = null;
+      if (nodesAbort === controller) nodesAbort = null;
+    };
+    inflight = fetchJSON('/api/nodes', controller.signal)
       .then(function (payload) {
         var list = Array.isArray(payload) ? payload : (payload && payload.nodes) || [];
         snapshot = { at: Date.now(), list: list };
-        inflight = null;
+        clear();
         return list;
       })
       .catch(function (error) {
-        inflight = null;
+        clear();
         throw error;
       });
     return inflight;
+  }
+
+  /* hub 1.4.x 适配：页面切后台时把在途的 /api/nodes 丢掉（script.js 的 visibilitychange 调它）。
+     中断后连快照缓存一起清掉——回到前台那一次必须是新请求，不能喂 1.5 秒内的旧快照。 */
+  function abortNodesFetch() {
+    if (nodesAbort) {
+      var controller = nodesAbort;
+      nodesAbort = null;
+      controller.abort();
+    }
+    snapshot = { at: 0, list: null };
+    inflight = null;
+  }
+
+  /* 历史窗口上限：hub 1.3.2 起 /api/me 带 history_days（保留天数，1~365），
+     上限就是它×24 小时、匿名与登录相同；旧 hub 没有该字段时用 168 / 2160 兜底。 */
+  function maxHoursFor() {
+    if (me.historyDays) return me.historyDays * 24;
+    return me.authed ? MAX_HOURS_ADMIN : MAX_HOURS_PUBLIC;
   }
 
   /* 极简探针 Node → Komari Client（主题只读它用到的字段，其余不编造） */
@@ -239,9 +271,10 @@
       });
   }
 
-  /* 负载历史：Hub 只保存 ts/cpu/mem_used/disk_used/net_rx/net_tx */
+  /* 负载历史：Hub 只保存 ts/cpu/mem_used/disk_used/net_rx/net_tx
+     （1.4.1 起每行还多了 swap_used/tcp/udp/procs，本主题不画这几条，读到也不消费） */
   function loadRecords(uuid, hours) {
-    var requested = Math.min(Math.max(1, hours || 1), me.authed ? MAX_HOURS_ADMIN : MAX_HOURS_PUBLIC);
+    var requested = Math.min(Math.max(1, hours || 1), maxHoursFor());
     return Promise.all([readNodes(), fetchJSON(
       '/api/nodes/' + encodeURIComponent(uuid) + '/metrics?hours=' + requested + '&points=240&series=metrics'
     )]).then(function (result) {
@@ -266,7 +299,7 @@
   /* 延迟历史：Hub 的 ping 行是 {ts, task_id, latency, loss?, band?}，
      某一桶全丢时 latency 为 null；probes 给线路名，loss 是整窗口的丢包百分比。 */
   function pingRecords(uuid, hours) {
-    var requested = Math.min(Math.max(1, hours || 1), me.authed ? MAX_HOURS_ADMIN : MAX_HOURS_PUBLIC);
+    var requested = Math.min(Math.max(1, hours || 1), maxHoursFor());
     return fetchJSON(
       '/api/nodes/' + encodeURIComponent(uuid) + '/metrics?hours=' + requested + '&points=240&series=ping'
     ).then(function (data) {
@@ -354,13 +387,22 @@
     return Promise.all([readMe().catch(function () { return null; }), readConfig()])
       .then(function (result) {
         var info = result[0] || {};
-        me = { authed: info.authed === true, public_page: info.public_page !== false, site_name: info.site_name || '' };
+        me = {
+          authed: info.authed === true,
+          public_page: info.public_page !== false,
+          site_name: info.site_name || '',
+          // hub 1.3.2 起 /api/me 带 history_days（保留天数，1~365）：
+          // 历史窗口上限改为「保留天数 × 24h」、匿名与登录相同（见 maxHoursFor）。
+          historyDays: (typeof info.history_days === 'number' && info.history_days >= 1)
+            ? Math.min(365, Math.round(info.history_days))
+            : null
+        };
         return {
           siteName: String(me.site_name || '').trim() || 'Monitor',
           authed: me.authed,
           publicPage: me.public_page,
           settings: result[1],
-          maxHours: me.authed ? MAX_HOURS_ADMIN : MAX_HOURS_PUBLIC
+          maxHours: maxHoursFor()
         };
       });
   }
@@ -373,6 +415,8 @@
     loadRecords: loadRecords,
     pingRecords: pingRecords,
     isAuthed: function () { return me.authed; },
-    maxHours: function () { return me.authed ? MAX_HOURS_ADMIN : MAX_HOURS_PUBLIC; }
+    maxHours: function () { return maxHoursFor(); },
+    // hub 1.4.x 适配：切后台时丢弃在途的 /api/nodes（script.js 的 visibilitychange 调它）
+    abortNodesFetch: abortNodesFetch
   };
 })();

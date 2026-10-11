@@ -21,7 +21,8 @@ function hashFile(path) {
 // 别把旧产物打进包里：逐个比对 dist/ 与源文件的哈希。
 // （不用 mtime：Node 的 cpSync 会把源文件的修改时间一起带过去，改完源码时间戳仍相同。）
 const distPairs = [
-  ...['index.html', 'styles.css', 'adapt.css', 'script.js', 'monitor.js', 'vendor/fonts.css'].map((file) => [`src/${file}`, file]),
+  ...['index.html', 'styles.css', 'adapt.css', 'script.js', 'monitor.js', 'vendor/fonts.css',
+    'favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'apple-touch-icon-precomposed.png'].map((file) => [`src/${file}`, file]),
   ...['echarts.min.js', ...readdirSync('vendor/fonts').map((font) => `fonts/${font}`)].map((file) => [`vendor/${file}`, `vendor/${file}`])
 ];
 const stale = distPairs.filter(([source, target]) => {

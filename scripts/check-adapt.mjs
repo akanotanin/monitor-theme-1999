@@ -422,6 +422,67 @@ if (!ruleBody(adapt, '.remark-lock').includes('width')) {
 }
 if (!existsSync('src/adapt.css')) problems.push('缺少 src/adapt.css');
 
+// 14. hub 1.4.1 适配：localStorage 的读写必须全部走安全包装。
+//     浏览器对站点禁用数据时，访问 localStorage 会抛 SecurityError —— 原版在 IIFE 顶部
+//     读它，一抛异常整个脚本不再执行、页面整张白（release note 里官方主题修的就是这个）。
+//     做法：剥掉两个包装函数的函数体之后，全文不允许再出现 localStorage。
+const storageOutside = (() => {
+  const stripBody = (src, name) => {
+    const start = src.indexOf(`function ${name}(`);
+    if (start < 0) return src;
+    const end = src.indexOf('\n  }', start);
+    return end < 0 ? src : src.slice(0, start) + src.slice(end + 4);
+  };
+  return stripBody(stripBody(jsCode, 'readStoredViewMode'), 'storeViewMode');
+})();
+const storageTotal = (jsCode.match(/localStorage/g) || []).length;
+if (storageTotal < 2) {
+  problems.push('script.js 里找不到经安全包装的 localStorage 读写（readStoredViewMode / storeViewMode）：禁用站点数据时页面会整张白');
+}
+if (storageOutside.includes('localStorage')) {
+  problems.push('script.js 在两个安全包装之外还有 localStorage 访问：禁用站点数据时这一处会抛 SecurityError（整页空白）');
+}
+
+// 15. hub 1.4.0-③：站点图标四件套 + index.html 的两条静态引用。
+//     hub 靠精确串（带引号）给这两个地址改 ?v=<摘要>；少一份兜底文件或引用写岔了，
+//     换图标时访客拿到的就是旧图（或内置默认图标），且没有任何报错。
+const ICON_FILES = ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'apple-touch-icon-precomposed.png'];
+for (const file of ICON_FILES) {
+  if (!existsSync(`src/${file}`)) {
+    problems.push(`缺少 src/${file}：hub 没设站点图标时 /${file} 会回落到内置默认，不是本主题的图标`);
+  }
+}
+for (const ref of ['"/favicon.svg"', '"/apple-touch-icon.png"']) {
+  if (!html.includes(ref)) {
+    problems.push(`index.html 里没有静态引用 ${ref}：hub 靠这个精确串改 ?v= 版本号，写岔了换图标浏览器不刷新`);
+  }
+}
+
+// 16. hub 1.4.1 适配：服务器字符串一律纯文本渲染（不许直接拼进 innerHTML）。
+//     详情页曾把 ${node.name} 等直接拼进模板；tooltip 的 seriesName 走 ECharts 默认的
+//     HTML 渲染。这里逐个字段扫：出现在插值里、又不带 escapeHtml 的一律报错。
+const RAW_FIELDS = ['name', 'os', 'arch', 'region', 'cpu_name', 'virtualization', 'kernel_version'];
+for (const field of RAW_FIELDS) {
+  const re = new RegExp(`\\$\\{[^}]*node\\.${field}\\b[^}]*\\}`, 'g');
+  for (const match of jsCode.matchAll(re)) {
+    if (!match[0].includes('escapeHtml(')) {
+      problems.push(`script.js 里有没转义的插值 ${match[0]}：这些字符串来自 Hub/agent 上报，要当纯文本渲染（escapeHtml）`);
+    }
+  }
+}
+if (/\$\{item\.seriesName\}/.test(jsCode)) {
+  problems.push('图表 tooltip 的 formatter 没有转义 seriesName：ECharts 默认按 HTML 渲染它的返回值');
+}
+// 币种码要锚在 costMoney 的函数体里查：全文搜 `escapeHtml(code)` 会被 usedRates 那处漏检
+// （自测时踩到：把 costMoney 里的转义删掉，护栏照样通过）。
+const costMoneyBody = (() => {
+  const start = jsCode.indexOf('function costMoney(');
+  return start < 0 ? '' : jsCode.slice(start, jsCode.indexOf('\n  }', start));
+})();
+if (!costMoneyBody.includes('escapeHtml(')) {
+  problems.push('costMoney 里的币种码没有过 escapeHtml：旧数据可能不是三个大写字母，会把标签拼碎');
+}
+
 if (problems.length) {
   throw new Error(`适配层校验未通过：\n  - ${problems.join('\n  - ')}`);
 }

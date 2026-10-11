@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Monitor 1999 的主题图标：强调色黄底 + 黑色粗边框 + 居中菱形（页头 ◆ 的同一语汇）。
+       站长在「设置 → 站点图标」里设了图之后这几条路径由 hub 回答；清掉设置即回到这里。
+       由 scripts/make_icons.py 生成，位图版本（.ico / apple-touch-icon）与它同一组常量。 -->
+  <rect width="64" height="64" fill="#FFE600"/>
+  <rect x="3" y="3" width="58" height="58" fill="none" stroke="#000000" stroke-width="6"/>
+  <path d="M32 10 54 32 32 54 10 32Z" fill="#000000"/>
+</svg>

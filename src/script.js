@@ -12,10 +12,27 @@
 (function() {
   'use strict';
 
+  // hub 1.4.1 适配：浏览器对站点禁用数据时，访问 localStorage 会抛 SecurityError。
+  // 原版在 IIFE 顶部就读它（state.viewMode 的初始化），一抛异常整个脚本不再执行 → 整页空白。
+  // 读写统一走这两个小包装、异常一律吞掉：读失败按「没存过偏好」处理，写失败只影响下次是否记得。
+  function readStoredViewMode() {
+    try {
+      return localStorage.getItem('monitor1999ViewMode');
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function storeViewMode(mode) {
+    try {
+      localStorage.setItem('monitor1999ViewMode', mode);
+    } catch (err) { /* 存储不可用：本次会话内照样切换，只是记不住 */ }
+  }
+
   const state = {
     nodes: new Map(),
     // 移植差异：访客的视图偏好改用自己的键，避免与其它主题/原主题串味
-    viewMode: localStorage.getItem('monitor1999ViewMode') || 'grid',
+    viewMode: readStoredViewMode() || 'grid',
     // 新增：分组筛选值（null = 全部，'' = 未分组，其它字符串 = 该分组名）。
     // 不落 localStorage：访客下次打开仍从「全部」开始，免得看到一半节点以为站点坏了。
     groupFilter: null,
@@ -458,6 +475,9 @@
         updateModalLiveInfo();
       }
     } catch (e) {
+      // hub 1.4.x 适配：切后台时主动中断的在途请求会以 AbortError 结束——不是故障，
+      // 不画错误页（回前台那次会重新取数）；其余错误照旧。
+      if (e && e.name === 'AbortError') return;
       console.error('[Monitor Theme] Error fetching data:', e);
       renderError();
     }
@@ -1085,7 +1105,8 @@
   function setViewMode(mode) {
     state.viewMode = mode;
     // 移植差异：访客的视图偏好用自己的键（原为 Komari 的 nodeViewMode）
-    localStorage.setItem('monitor1999ViewMode', mode);
+    // hub 1.4.1 适配：经安全包装写（禁用站点数据时 localStorage 会抛，不能让切视图中断）
+    storeViewMode(mode);
     document.querySelectorAll('.btn-view').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === mode);
     });
@@ -1150,10 +1171,10 @@
     elements.modalContent.innerHTML = `
       <div class="modal-node-header">
         <div class="modal-node-title">
-          <h2 class="modal-node-name">${node.name}</h2>
+          <h2 class="modal-node-name">${escapeHtml(node.name)}</h2>
           <span class="modal-node-status-tag ${node.online ? 'online' : 'offline'}">${node.online ? 'Online' : 'Offline'}</span>
         </div>
-        <div class="modal-node-meta">${node.os || ''} · ${node.arch || ''} · ${node.region || ''}</div>
+        <div class="modal-node-meta">${escapeHtml(node.os || '')} · ${escapeHtml(node.arch || '')} · ${escapeHtml(node.region || '')}</div>
         ${remarkChipsHTML(node)}
       </div>
 
@@ -1161,17 +1182,17 @@
         <div class="modal-info-section">
           <h3 class="modal-info-section-title">HARDWARE</h3>
           <div class="modal-info-grid">
-            <div class="info-item"><span class="info-label">CPU</span><span class="info-value">${node.cpu_name || '-'} (${node.cpu_cores || 0} Cores)</span></div>
-            <div class="info-item"><span class="info-label">Architecture</span><span class="info-value">${node.arch || '-'}</span></div>
-            <div class="info-item"><span class="info-label">Virtualization</span><span class="info-value">${node.virtualization || '-'}</span></div>
+            <div class="info-item"><span class="info-label">CPU</span><span class="info-value">${escapeHtml(node.cpu_name || '-')} (${node.cpu_cores || 0} Cores)</span></div>
+            <div class="info-item"><span class="info-label">Architecture</span><span class="info-value">${escapeHtml(node.arch || '-')}</span></div>
+            <div class="info-item"><span class="info-label">Virtualization</span><span class="info-value">${escapeHtml(node.virtualization || '-')}</span></div>
           </div>
         </div>
 
         <div class="modal-info-section">
           <h3 class="modal-info-section-title">SYSTEM</h3>
           <div class="modal-info-grid">
-            <div class="info-item"><span class="info-label">OS</span><span class="info-value">${node.os || '-'}</span></div>
-            <div class="info-item"><span class="info-label">Kernel</span><span class="info-value">${node.kernel_version || '-'}</span></div>
+            <div class="info-item"><span class="info-label">OS</span><span class="info-value">${escapeHtml(node.os || '-')}</span></div>
+            <div class="info-item"><span class="info-label">Kernel</span><span class="info-value">${escapeHtml(node.kernel_version || '-')}</span></div>
             <div class="info-item"><span class="info-label">Uptime</span><span class="info-value" id="modal-uptime">${formatUptime(node.uptime)}</span></div>
             <div class="info-item"><span class="info-label">Last Report</span><span class="info-value" id="modal-last-report">${node.last_report ? new Date(node.last_report).toLocaleString() : '-'}</span></div>
           </div>
@@ -1286,8 +1307,9 @@
       </section>
     `;
 
-    // 移植差异：Hub 对匿名访客的历史窗口上限是 168 小时（超限会被静默夹到上限，
-    // 图例写着 30D 其实只画了 7 天），所以把拿不到的窗口按钮收起来。
+    // 移植差异：Hub 对历史窗口的上限跟随保留天数（/api/me 的 history_days，1.3.2 起
+    // 匿名与登录同源；旧 hub 没有该字段时适配层回落到 168 / 2160）。拿不到的窗口按钮
+    // 收起来——否则图例写着 30D 其实只画了 7 天。
     elements.modalContent.querySelectorAll('.btn-timescale').forEach(btn => {
       if (parseInt(btn.dataset.hours, 10) > state.maxHistoryHours) btn.remove();
     });
@@ -1480,7 +1502,10 @@
       formatter: params => {
         if (!params.length) return '';
         const timestamp = params[0].value[0];
-        const rows = params.map(item => `${item.marker}${item.seriesName}: ${formatter(item.value[1])}`);
+        // hub 1.4.1 适配：ECharts 的 tooltip 默认把 formatter 的返回值当 HTML 渲染，
+        // 而 seriesName 是站长在 Hub 后台起的探测线路名——转义后再拼（本站其余文本
+        // 也都是纯文本口径，见各处的 escapeHtml）。
+        const rows = params.map(item => `${item.marker}${escapeHtml(item.seriesName)}: ${formatter(item.value[1])}`);
         return `<div style="background:#000;color:#fff;padding:6px 10px;font-weight:700">${formatChartTime(timestamp, hours, true)}</div><div style="padding:8px 10px;line-height:1.7">${rows.join('<br>')}</div>`;
       }
     },
@@ -1882,10 +1907,13 @@
     return { rates, builtin };
   }
 
-  // 与 Hub 面板的 money() 同一套写法（符号 + 两位小数），两边看起来才是一回事
+  // 与 Hub 面板的 money() 同一套写法（符号 + 两位小数），两边看起来才是一回事。
+  // hub 1.4.1 适配：币种码按纯文本转义——1.3.1 起 Hub 只收三个大写字母，但更早存下的值
+  // 可能不是，直接拼进 innerHTML 会把整段标签拼碎（它是主题里唯一一处服务器字符串
+  // 还没过 escapeHtml 的地方，护栏在 verify-hub141 的 D 组）。
   function costMoney(amount, code) {
     const symbol = CURRENCY_SYMBOLS[code] || '';
-    return `${symbol}${amount.toFixed(2)}${symbol ? '' : ' ' + code}`;
+    return `${symbol}${amount.toFixed(2)}${symbol ? '' : ' ' + escapeHtml(code)}`;
   }
 
   const costWarnedRates = new Set();
@@ -2031,7 +2059,7 @@
       // 用内置参考汇率折算的币种打个 `*`：这一格小字放不下日期与来源，挂到悬停提示上
       // （站长的汇率表覆盖过的币种没有这个记号）。
       const starred = usedCodes.some(code => s.builtin.has(code));
-      const usedRates = usedCodes.map(code => `${code} ${s.rates[code]}${s.builtin.has(code) ? '*' : ''}`);
+      const usedRates = usedCodes.map(code => `${escapeHtml(code)} ${s.rates[code]}${s.builtin.has(code) ? '*' : ''}`);
       meta.push(`<span${starred ? ` title="带 * 的币种用的是主题内置参考汇率（${FX_DATE} 取自 ${FX_SOURCE}），可在主题设置 → 汇率表里覆盖"` : ''}>RATE ${usedRates.join(' / ')}</span>`);
     }
     if (s.skipped) {
@@ -2284,10 +2312,18 @@
   }
 
   function startPolling() {
+    stopPolling();
+    // hub 1.4.x 适配：页面隐藏（后台标签页）时不轮询——回到前台由 visibilitychange 补一次再起。
+    // 开在后台的标签页因此不会白拉数据；可见时的行为与以前完全一样。
+    if (document.hidden) return;
+    state.pollTimer = setInterval(fetchNodesAndStatus, state.pollInterval);
+  }
+
+  function stopPolling() {
     if (state.pollTimer) {
       clearInterval(state.pollTimer);
+      state.pollTimer = null;
     }
-    state.pollTimer = setInterval(fetchNodesAndStatus, state.pollInterval);
   }
 
   // 移植差异：新增两项站点级设置（刷新间隔、默认视图），都从 Hub 的主题配置读取。
@@ -2297,7 +2333,7 @@
     if (Number.isFinite(interval) && interval > 0) {
       state.pollInterval = Math.min(60, Math.max(1, Math.round(interval))) * 1000;
     }
-    if (!localStorage.getItem('monitor1999ViewMode') && state.settings.defaultViewMode === 'list') {
+    if (!readStoredViewMode() && state.settings.defaultViewMode === 'list') {
       setViewMode('list');
     } else {
       setViewMode(state.viewMode);
@@ -2333,14 +2369,20 @@
       });
     });
 
-    // 新增：标签页回到前台时补一次三网延迟（隐藏期间不取数，回来看见的就不会是几分钟前的数）
+    // hub 1.4.x 适配：页面隐藏时停轮询、丢弃在途请求（迟到的响应不许再改页面）；
+    // 回到前台立即补一次 /api/nodes 并把轮询接回来，三网延迟与剩余价值这两块也顺手刷。
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        applyCardPings();
-        refreshCardPings();
-        // 剩余价值：回到前台就重算一次（可能已经跨天，剩余天数该往下走了）
-        renderCostCards();
+      if (document.hidden) {
+        stopPolling();
+        window.Monitor1999.abortNodesFetch();
+        return;
       }
+      fetchNodesAndStatus();
+      startPolling();
+      applyCardPings();
+      refreshCardPings();
+      // 剩余价值：回到前台就重算一次（可能已经跨天，剩余天数该往下走了）
+      renderCostCards();
     });
 
     // Header scroll hide/show - shows on any upscroll
