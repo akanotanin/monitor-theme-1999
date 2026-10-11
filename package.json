@@ -15,6 +15,7 @@
     "check": "node scripts/check-defaults.mjs && node scripts/check-adapt.mjs",
     "verify": "node scripts/verify-layout.mjs",
     "verify:hub141": "node scripts/verify-hub141.mjs",
+    "verify:live": "node scripts/verify-live.mjs",
     "package": "node scripts/build.mjs && node scripts/package.mjs",
     "preview": "node scripts/serve.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('release',{recursive:true,force:true})\""
