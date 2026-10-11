@@ -2,7 +2,7 @@
 
 ![Monitor 1999 主题首页预览](preview.png?v=2)
 
-把 [ricebucket/komari-theme-1999](https://github.com/r1cebucket/komari-theme-1999)（基于原版 **v1.0.1**）移植到
+把 [r1cebucket/komari-theme-1999](https://github.com/r1cebucket/komari-theme-1999)（基于原版 **v1.0.1**）移植到
 [极简探针 Monitor](https://github.com/monitor-probe/monitor) 的主题。纯静态前端，只读 hub 的公开接口，
 字体与 ECharts 都打进包里，不依赖第三方 CDN。
 
@@ -66,4 +66,4 @@
 
 ## 许可
 
-MIT。原主题 [Komari Theme 1999](https://github.com/r1cebucket/komari-theme-1999) 由 [ricebucket](https://github.com/r1cebucket) 编写，本仓库是它到极简探针的移植版本。
+MIT。原主题 [Komari Theme 1999](https://github.com/r1cebucket/komari-theme-1999) 由 [r1cebucket](https://github.com/r1cebucket) 编写，本仓库是它到极简探针的移植版本。
