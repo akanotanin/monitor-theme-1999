@@ -1243,20 +1243,6 @@
             </div>
           </div>
         </div>
-
-        <div class="modal-info-section modal-connections-section">
-          <h3 class="modal-info-section-title">CONNECTIONS</h3>
-          <div class="connection-boxes">
-            <div class="connection-box tcp">
-              <div class="connection-box-head"><span class="connection-box-label">TCP</span><span class="connection-box-note">CURRENT</span></div>
-              <span class="connection-box-value" id="modal-conn-tcp">${node.connections || 0}</span>
-            </div>
-            <div class="connection-box udp">
-              <div class="connection-box-head"><span class="connection-box-label">UDP</span><span class="connection-box-note">CURRENT</span></div>
-              <span class="connection-box-value" id="modal-conn-udp">${node.connections_udp || 0}</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       <section class="modal-chart-section modal-load-section">
@@ -1296,9 +1282,22 @@
           </div>
           <div id="chart-net" class="load-chart-container"></div>
         </div>
+        <div class="load-chart-card load-connections-card">
+          <div class="load-chart-label">Connections</div>
+          <div class="load-connections-value">
+            <div class="load-connection-item tcp">
+              <span class="load-connection-proto">TCP</span>
+              <strong class="load-connection-count" id="modal-conn-tcp">${node.connections || 0}</strong>
+            </div>
+            <div class="load-connection-item udp">
+              <span class="load-connection-proto">UDP</span>
+              <strong class="load-connection-count" id="modal-conn-udp">${node.connections_udp || 0}</strong>
+            </div>
+          </div>
+        </div>
         <!-- 移植差异：上游还有 Connections / Processes 两张曲线卡片。
-             极简探针只保存 CPU / 内存 / 磁盘 / 上下行速率的历史，这两项没有曲线可画，
-             所以整卡移除（不用实时值冒充曲线）；连接数的实时值仍在 NETWORK 区块显示。 -->
+             极简探针不保存连接数 / 进程数的历史，所以不画曲线；Connections 改成一张
+             只放 TCP / UDP 实时值的卡片（跟着普通轮询刷新），Processes 整卡移除。 -->
         </div>
       </section>
 
