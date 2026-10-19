@@ -1284,20 +1284,16 @@
         </div>
         <div class="load-chart-card load-connections-card">
           <div class="load-chart-label">Connections</div>
-          <div class="load-connections-value">
-            <div class="load-connection-item tcp">
-              <span class="load-connection-proto">TCP</span>
-              <strong class="load-connection-count" id="modal-conn-tcp">${node.connections || 0}</strong>
-            </div>
-            <div class="load-connection-item udp">
-              <span class="load-connection-proto">UDP</span>
-              <strong class="load-connection-count" id="modal-conn-udp">${node.connections_udp || 0}</strong>
-            </div>
+          <div class="load-chart-value load-network-value">
+            <span class="load-connection-tcp">TCP <span id="modal-conn-tcp">${node.connections || 0}</span></span>
+            <span class="load-network-separator">/</span>
+            <span class="load-connection-udp">UDP <span id="modal-conn-udp">${node.connections_udp || 0}</span></span>
           </div>
+          <div id="chart-conn" class="load-chart-container"></div>
         </div>
-        <!-- 移植差异：上游还有 Connections / Processes 两张曲线卡片。
-             极简探针不保存连接数 / 进程数的历史，所以不画曲线；Connections 改成一张
-             只放 TCP / UDP 实时值的卡片（跟着普通轮询刷新），Processes 整卡移除。 -->
+        <!-- 移植差异：上游还有 Connections / Processes 两张曲线卡片。极简探针 1.4.1 起
+             的历史桶带 tcp / udp，所以 Connections 恢复成曲线（两条线 + 实时值）；
+             Processes 没有历史，整卡移除。老 Hub 没有这两个字段时卡片显示 NO HISTORY。 -->
         </div>
       </section>
 
@@ -1570,7 +1566,7 @@
 
 
   function renderLoadCharts(history) {
-    ['cpu', 'ram', 'disk', 'net'].forEach(disposeChart);
+    ['cpu', 'ram', 'disk', 'net', 'conn'].forEach(disposeChart);
     if (typeof echarts === 'undefined') return;
 
     const toPoint = (record, value) => [record.timestamp, value];
@@ -1587,8 +1583,22 @@
       createSeries('Down', '#0066FF', netDownData),
       createSeries('Up', '#00A854', netUpData)
     ], state.modalLoadTimeScale, formatBytes, null, true));
-    // 移植差异：上游在这里还挂了 Connections / Processes 两条曲线，
-    // 极简探针不保存这两项的历史，卡片已整块移除。
+
+    // 新增：连接数曲线（Hub 1.4.1 起历史桶带 tcp / udp；老 Hub 没有就显示 NO HISTORY，
+    // 不拿 0 画一条贴着底边的假线——null 会让 ECharts 断开而不是归零）。
+    const connTcpData = history.map(h => toPoint(h, typeof h.tcp === 'number' ? h.tcp : null));
+    const connUdpData = history.map(h => toPoint(h, typeof h.udp === 'number' ? h.udp : null));
+    const hasConnHistory = history.some(h => typeof h.tcp === 'number' || typeof h.udp === 'number');
+    const connEl = document.querySelector('#chart-conn');
+    if (connEl) connEl.innerHTML = '';
+    if (hasConnHistory) {
+      mountChart('conn', '#chart-conn', createChartOption([
+        createSeries('TCP', '#0066FF', connTcpData),
+        createSeries('UDP', '#9B5DE5', connUdpData)
+      ], state.modalLoadTimeScale, value => Number(value).toFixed(0), null, true));
+    } else if (connEl) {
+      connEl.innerHTML = '<div class="chart-empty-note">NO HISTORY</div>';
+    }
   }
 
   function computeTaskStats(pingRecords, pingTasks, lossByTask) {

@@ -84,6 +84,8 @@ const METRICS_ROWS = Array.from({ length: 60 }, (_, i) => ({
   ts: now - (60 - i) * 60, cpu: 20 + (i % 5), mem_used: 1073741824, disk_used: 10737418240,
   net_rx: 1024, net_tx: 2048, swap_used: 104857600, tcp: 40 + (i % 10), udp: 8, procs: 90 + i,
 }))
+// C2 组夹具：老 Hub 的历史桶（1.4.0 及以前）没有 tcp/udp —— 卡片必须退化成 NO HISTORY
+const METRICS_ROWS_NO_CONN = METRICS_ROWS.map(({ tcp, udp, ...rest }) => rest)
 const PING_ROWS = Array.from({ length: 40 }, (_, i) => ({ ts: now - (40 - i) * 60, task_id: 1, latency: 12 + (i % 3) }))
 
 let current = { nodes: NORMAL, cfg: {}, historyDays: 30, admin: false, slowRemaining: 0 }
@@ -128,7 +130,7 @@ const server = createServer((req, res) => {
     if (/^\/api\/nodes\/[^/]+\/metrics$/.test(path)) {
       stats.metrics += 1
       stats.hours.push(url.searchParams.get('hours'))
-      return json({ metrics: METRICS_ROWS, ping: PING_ROWS, probes: probesOf(), loss: {}, step: 60 })
+      return json({ metrics: current.metricsRows || METRICS_ROWS, ping: PING_ROWS, probes: probesOf(), loss: {}, step: 60 })
     }
     if (path.endsWith('/config')) return json(current.cfg)
     return json({})
@@ -294,37 +296,55 @@ const mBefore = stats.metrics
 await navigate('metrics-shape')
 await waitFor(`document.querySelectorAll('.node-card').length > 0`, 10000)
 await js(`document.querySelector('.node-card').click()`)
-await waitFor(`document.querySelectorAll('.load-chart-container canvas').length >= 4`, 10000)
+await waitFor(`document.querySelectorAll('.load-chart-container canvas').length >= 5`, 10000)
 await sleep(800)
 ck('C', '★ 详情页取到了指标（服务端计数 ≥1）', stats.metrics - mBefore >= 1, `窗口内 ${stats.metrics - mBefore} 次`)
-ck('C', '★ 四张负载图都画出来了（canvas ≥ 4）', (await js(`document.querySelectorAll('.load-chart-container canvas').length`)) >= 4)
+ck('C', '★ 五张负载图都画出来了（canvas ≥ 5，含 Connections）', (await js(`document.querySelectorAll('.load-chart-container canvas').length`)) >= 5)
 ck('C', '★ 延迟图也画出来了（#chart-ping canvas ≥ 1）', (await js(`document.querySelectorAll('#chart-ping canvas').length`)) >= 1)
 const connInfo = JSON.parse(await js(`(() => {
   const cards = [...document.querySelectorAll('.modal-load-grid .load-chart-card')]
   const card = document.querySelector('.modal-load-grid .load-connections-card')
   const net = cards.find((c) => ((c.querySelector('.load-chart-label') || {}).textContent || '').trim() === 'Network')
-  const items = card ? [...card.querySelectorAll('.load-connection-item')] : []
+  const tcpEl = document.getElementById('modal-conn-tcp')
+  const udpEl = document.getElementById('modal-conn-udp')
+  const chartEl = document.getElementById('chart-conn')
+  const chart = chartEl && window.echarts ? window.echarts.getInstanceByDom(chartEl) : null
+  const opt = chart ? chart.getOption() : null
+  const series = opt && opt.series ? opt.series : []
+  const lastValue = (s) => (s && s.data && s.data.length ? s.data[s.data.length - 1][1] : null)
   const cb = card ? card.getBoundingClientRect() : null
   const nb = net ? net.getBoundingClientRect() : null
+  const tcpStyle = document.querySelector('.load-connection-tcp')
+  const udpStyle = document.querySelector('.load-connection-udp')
   return JSON.stringify({
     cardInLoadGrid: !!card,
     label: card ? (card.querySelector('.load-chart-label') || {}).textContent : '',
-    labels: items.map((i) => (i.querySelector('.load-connection-proto') || {}).textContent),
-    values: items.map((i) => (i.querySelector('.load-connection-count') || {}).textContent),
-    leftColors: items.map((i) => getComputedStyle(i).borderLeftColor),
+    values: [tcpEl ? tcpEl.textContent : null, udpEl ? udpEl.textContent : null],
+    tcpColor: tcpStyle ? getComputedStyle(tcpStyle).color : '',
+    udpColor: udpStyle ? getComputedStyle(udpStyle).color : '',
     sameRow: !!(cb && nb) && Math.abs(cb.top - nb.top) <= 2,
     rightOfNetwork: !!(cb && nb) && cb.left >= nb.right - 2,
+    canvas: !!(chartEl && chartEl.querySelector('canvas')),
+    seriesNames: series.map((s) => s.name),
+    points: series[0] && series[0].data ? series[0].data.length : 0,
+    lastTcp: lastValue(series[0]),
+    lastUdp: lastValue(series[1]),
     oldBlocks: document.querySelectorAll('#node-modal .modal-connections-section, #node-modal .network-connections').length,
   })
 })()`))
 ck('C', '★ LOAD OVERVIEW 里新增 Connections 卡（TCP 16 / UDP 3）',
-  connInfo.cardInLoadGrid && connInfo.label.trim() === 'Connections' && connInfo.labels.join(',') === 'TCP,UDP' && connInfo.values.join(',') === '16,3',
+  connInfo.cardInLoadGrid && connInfo.label.trim() === 'Connections' && connInfo.values.join(',') === '16,3',
   JSON.stringify(connInfo))
 ck('C', '★ Connections 卡就在 Network 框右边、与它同一行',
   connInfo.sameRow && connInfo.rightOfNetwork, JSON.stringify({ sameRow: connInfo.sameRow, rightOfNetwork: connInfo.rightOfNetwork }))
-ck('C', '★ TCP 蓝、UDP 紫的左侧色条沿用 NETWORK 的色条语言',
-  connInfo.leftColors[0] === 'rgb(0, 102, 255)' && connInfo.leftColors[1] === 'rgb(155, 93, 229)',
-  connInfo.leftColors.join(' | '))
+ck('C', '★ TCP 蓝、UDP 紫的实时值沿用 NETWORK 的配色',
+  connInfo.tcpColor === 'rgb(0, 102, 255)' && connInfo.udpColor === 'rgb(155, 93, 229)',
+  [connInfo.tcpColor, connInfo.udpColor].join(' | '))
+ck('C', '★ Connections 曲线画出来了：TCP / UDP 两条、60 个采样点',
+  connInfo.canvas && connInfo.seriesNames.join(',') === 'TCP,UDP' && connInfo.points === 60,
+  JSON.stringify({ canvas: connInfo.canvas, series: connInfo.seriesNames, points: connInfo.points }))
+ck('C', '★ 曲线用的是历史桶里的 tcp / udp（末点 49 / 8，不是 0）',
+  connInfo.lastTcp === 49 && connInfo.lastUdp === 8, `${connInfo.lastTcp} / ${connInfo.lastUdp}`)
 ck('C', '原来的独立 CONNECTIONS 区块已移除（同一组数字只出现一处）',
   connInfo.oldBlocks === 0, JSON.stringify({ oldBlocks: connInfo.oldBlocks }))
 await shot('c-detail.png')
@@ -355,6 +375,25 @@ await sleep(300)
 await shot('c-detail-mobile.png')
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false })
 await sleep(300)
+// C2：老 Hub（1.4.0 及以前）的历史桶没有 tcp/udp → 卡片显示 NO HISTORY，不画 0 线
+current = { nodes: NORMAL, cfg: {}, historyDays: 30, admin: false, metricsRows: METRICS_ROWS_NO_CONN }
+await navigate('no-conn-history')
+await waitFor(`document.querySelectorAll('.node-card').length > 0`, 10000)
+await js(`document.querySelector('.node-card').click()`)
+await waitFor(`document.querySelectorAll('.load-chart-container canvas').length >= 4`, 10000)
+await sleep(600)
+const noHist = JSON.parse(await js(`(() => {
+  const el = document.getElementById('chart-conn')
+  const tcpEl = document.getElementById('modal-conn-tcp')
+  const udpEl = document.getElementById('modal-conn-udp')
+  return JSON.stringify({
+    note: el && el.querySelector('.chart-empty-note') ? el.querySelector('.chart-empty-note').textContent : '',
+    canvas: !!(el && el.querySelector('canvas')),
+    values: [tcpEl ? tcpEl.textContent : null, udpEl ? udpEl.textContent : null],
+  })
+})()`))
+ck('C', '老 Hub 历史桶没有 tcp/udp → Connections 卡显示 NO HISTORY，实时值仍在',
+  noHist.note === 'NO HISTORY' && !noHist.canvas && noHist.values.join(',') === '16,3', JSON.stringify(noHist))
 ck('C', '没有因为多出的字段报错', !errors.some((e) => /swap_used|procs|tcp|udp/.test(e)), errors.join(' | ').slice(0, 240))
 ck('C', 'C 组没有未捕获异常 / 控制台报错', errors.length === errBase, errors.slice(errBase).join(' | ').slice(0, 240))
 errBase = errors.length

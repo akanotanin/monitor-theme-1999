@@ -271,8 +271,9 @@
       });
   }
 
-  /* 负载历史：Hub 只保存 ts/cpu/mem_used/disk_used/net_rx/net_tx
-     （1.4.1 起每行还多了 swap_used/tcp/udp/procs，本主题不画这几条，读到也不消费） */
+  /* 负载历史：Hub 只保存 ts/cpu/mem_used/disk_used/net_rx/net_tx；
+     1.4.1 起每个桶还多了 swap_used/tcp/udp/procs，本主题消费 tcp/udp 画连接数曲线，
+     其余字段不画（老 Hub 没有 tcp/udp 时给 null，不要让曲线画成 0） */
   function loadRecords(uuid, hours) {
     var requested = Math.min(Math.max(1, hours || 1), maxHoursFor());
     return Promise.all([readNodes(), fetchJSON(
@@ -290,7 +291,9 @@
           disk: row.disk_used,
           disk_total: diskTotal,
           net_in: row.net_rx,
-          net_out: row.net_tx
+          net_out: row.net_tx,
+          tcp: typeof row.tcp === 'number' ? row.tcp : null,
+          udp: typeof row.udp === 'number' ? row.udp : null
         };
       });
     });
