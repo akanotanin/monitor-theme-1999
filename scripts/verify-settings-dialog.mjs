@@ -4,13 +4,13 @@
 //   · 分组名/字段顺序错了、help 写成一堵字墙（四五行的灰字），他不会报错，只会觉得「乱」；
 //   · 字段数 > 6 且分组 > 1 时对话框会切成「左侧分组导航 + 只挂载当前那一组」，
 //     所以断言必须**按组点开再断**，拿一次 innerText 断所有组会得到一堆假 FAIL。
-// 用法: node scripts/verify-settings-dialog.mjs [baseUrl=https://komari.im] [截图前缀=shots/settings]
+// 用法: node scripts/verify-settings-dialog.mjs [baseUrl=https://monitor.example.com] [截图前缀=shots/settings]
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const MANIFEST = JSON.parse(readFileSync('theme.json', 'utf8'));
-const BASE = (process.argv[2] || 'https://komari.im').replace(/\/$/, '');
+const BASE = (process.argv[2] || 'https://monitor.example.com').replace(/\/$/, '');
 const PREFIX = process.argv[3] || 'shots/settings';
 const OUT = PREFIX.split('/').slice(0, -1).join('/') || '.';
 mkdirSync(OUT, { recursive: true });

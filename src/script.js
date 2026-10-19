@@ -1242,9 +1242,19 @@
               <div class="network-channel-total"><span>TOTAL RECEIVED</span><strong>${formatBytes(node.net_total_down || 0)}</strong></div>
             </div>
           </div>
-          <div class="network-connections">
-            <span>CONNECTIONS</span>
-            <strong>${node.connections || 0} TCP · ${node.connections_udp || 0} UDP</strong>
+        </div>
+
+        <div class="modal-info-section modal-connections-section">
+          <h3 class="modal-info-section-title">CONNECTIONS</h3>
+          <div class="connection-boxes">
+            <div class="connection-box tcp">
+              <div class="connection-box-head"><span class="connection-box-label">TCP</span><span class="connection-box-note">CURRENT</span></div>
+              <span class="connection-box-value" id="modal-conn-tcp">${node.connections || 0}</span>
+            </div>
+            <div class="connection-box udp">
+              <div class="connection-box-head"><span class="connection-box-label">UDP</span><span class="connection-box-note">CURRENT</span></div>
+              <span class="connection-box-value" id="modal-conn-udp">${node.connections_udp || 0}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -2309,6 +2319,12 @@
     if (netUpVal) scrambleTextIfChanged(netUpVal, formatNetworkSpeed(node.net_out || 0));
     const netDownVal = document.getElementById('modal-net-down-val');
     if (netDownVal) scrambleTextIfChanged(netDownVal, formatNetworkSpeed(node.net_in || 0));
+
+    // 新增：详情页 CONNECTIONS 的两个框跟着轮询翻牌
+    const connTcpVal = document.getElementById('modal-conn-tcp');
+    if (connTcpVal) scrambleTextIfChanged(connTcpVal, String(node.connections || 0));
+    const connUdpVal = document.getElementById('modal-conn-udp');
+    if (connUdpVal) scrambleTextIfChanged(connUdpVal, String(node.connections_udp || 0));
   }
 
   function startPolling() {

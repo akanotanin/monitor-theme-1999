@@ -299,10 +299,52 @@ await sleep(800)
 ck('C', '★ 详情页取到了指标（服务端计数 ≥1）', stats.metrics - mBefore >= 1, `窗口内 ${stats.metrics - mBefore} 次`)
 ck('C', '★ 四张负载图都画出来了（canvas ≥ 4）', (await js(`document.querySelectorAll('.load-chart-container canvas').length`)) >= 4)
 ck('C', '★ 延迟图也画出来了（#chart-ping canvas ≥ 1）', (await js(`document.querySelectorAll('#chart-ping canvas').length`)) >= 1)
+const connInfo = JSON.parse(await js(`(() => {
+  const boxes = [...document.querySelectorAll('.modal-connections-section .connection-box')]
+  const pick = (el, sel) => el && el.querySelector(sel) ? el.querySelector(sel).textContent : null
+  return JSON.stringify({
+    count: boxes.length,
+    labels: boxes.map((b) => pick(b, '.connection-box-label')),
+    values: boxes.map((b) => pick(b, '.connection-box-value')),
+    topColors: boxes.map((b) => getComputedStyle(b).borderTopColor),
+    oldStrip: document.querySelectorAll('#node-modal .network-connections').length,
+    title: (document.querySelector('#node-modal .modal-connections-section .modal-info-section-title') || {}).textContent || '',
+  })
+})()`))
+ck('C', '★ 详情页新增 TCP / UDP 两个连接框（16 / 3）',
+  connInfo.count === 2 && connInfo.labels.join(',') === 'TCP,UDP' && connInfo.values.join(',') === '16,3',
+  JSON.stringify(connInfo))
+ck('C', '★ TCP 蓝、UDP 紫的顶条沿用 NETWORK 的色条语言',
+  connInfo.topColors[0] === 'rgb(0, 102, 255)' && connInfo.topColors[1] === 'rgb(155, 93, 229)',
+  connInfo.topColors.join(' | '))
+ck('C', '旧的一行 CONNECTIONS 细条已移除（同一组数字不重复出现）',
+  connInfo.oldStrip === 0 && connInfo.title === 'CONNECTIONS', JSON.stringify({ oldStrip: connInfo.oldStrip, title: connInfo.title }))
+await shot('c-detail.png')
+// 窄屏：两个连接框改成上下排，整页不许横向溢出（详情页最多人用手机看）
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
+await sleep(500)
+const phoneConn = JSON.parse(await js(`(() => {
+  const boxes = [...document.querySelectorAll('.modal-connections-section .connection-box')]
+  const first = boxes[0].getBoundingClientRect()
+  const second = boxes[1].getBoundingClientRect()
+  return JSON.stringify({
+    stacked: second.top >= first.bottom,
+    widths: boxes.map((b) => Math.round(b.getBoundingClientRect().width)),
+    docScrollW: document.documentElement.scrollWidth,
+    inner: innerWidth,
+  })
+})()`))
+ck('C', '窄屏（390）两个连接框上下排、没有横向溢出',
+  phoneConn.stacked && phoneConn.docScrollW <= 390 && phoneConn.widths.every((w) => w <= 390),
+  JSON.stringify(phoneConn))
+await js(`document.querySelector('.modal-connections-section').scrollIntoView({ block: 'center' })`)
+await sleep(300)
+await shot('c-detail-mobile.png')
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false })
+await sleep(300)
 ck('C', '没有因为多出的字段报错', !errors.some((e) => /swap_used|procs|tcp|udp/.test(e)), errors.join(' | ').slice(0, 240))
 ck('C', 'C 组没有未捕获异常 / 控制台报错', errors.length === errBase, errors.slice(errBase).join(' | ').slice(0, 240))
 errBase = errors.length
-await shot('c-detail.png')
 
 /* ---------------------------------------------------------------- D. 服务器字符串一律纯文本 */
 console.log('\n=== D、agent 上报的字符串纯文本渲染（卡片 / 分组标签 / 详情页 / tooltip） ===')

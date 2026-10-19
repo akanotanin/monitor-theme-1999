@@ -1,8 +1,8 @@
 // 本地预览：静态伺服 dist/，可把 /api 反代到一台真实的 Hub。
 //
 //   npm run preview                       # 只伺服静态文件（页面会显示连接失败）
-//   MONITOR_HUB=https://komari.im npm run preview
-//   npm run preview -- --hub https://komari.im --port 9911
+//   MONITOR_HUB=https://monitor.example.com npm run preview
+//   npm run preview -- --hub https://monitor.example.com --port 9911
 //
 // 极简探针的接口没有 CORS 头，所以预览必须走这里的同源代理，浏览器直连 Hub 会被拦。
 import { createServer } from 'node:http';
